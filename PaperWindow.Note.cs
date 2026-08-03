@@ -22,6 +22,7 @@ public sealed partial class PaperWindow
     private int _noteDeferredWorkGeneration;
     private Action? _cancelNotePresenterInteractions;
     private Action? _settlePendingNoteBodyRebuild;
+    private ContextMenu? _notePreviewContextMenu;
     private bool _noteContentDirty;
     private bool _liveIsScriptCapsule;
 
@@ -30,6 +31,7 @@ public sealed partial class PaperWindow
         CancelNotePresenterDeferredWork();
         _cancelNotePresenterInteractions = null;
         _showNotePreview = null;
+        _notePreviewContextMenu = null;
         return ++_notePresenterGeneration;
     }
 
@@ -331,7 +333,7 @@ public sealed partial class PaperWindow
         editorMenu.Items.Add(MenuItem(Strings.Get("MenuPaste"), (_, _) => box.Paste()));
         editorMenu.Items.Add(MenuItem(Strings.Get("MenuSelectAll"), (_, _) => box.SelectAll()));
 
-        var previewMenu = BuildPaperContextMenu();
+        _notePreviewContextMenu = BuildPaperContextMenu();
         void ShowPreview()
         {
             if (!IsCurrentPresenter())
@@ -343,7 +345,7 @@ public sealed partial class PaperWindow
             box.ClearImageSelection();
             box.SelectionLength = 0;
             box.SetPreviewMode(true);
-            box.ContextMenu = previewMenu;
+            box.ContextMenu = _notePreviewContextMenu ??= BuildPaperContextMenu();
             isPreviewing = true;
             // Focus can be cleared by the caller before preview mode is entered. Defer the
             // decision until WPF has finished the current focus transition, then park focus
