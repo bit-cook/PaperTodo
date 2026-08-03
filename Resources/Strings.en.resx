@@ -256,6 +256,9 @@ Error: {0}</value>
   <data name="MenuList" xml:space="preserve">
     <value>List</value>
   </data>
+  <data name="MenuQuick" xml:space="preserve">
+    <value>Quick</value>
+  </data>
   <data name="MenuNew" xml:space="preserve">
     <value>New</value>
   </data>
@@ -272,7 +275,7 @@ Error: {0}</value>
     <value>Rename title</value>
   </data>
   <data name="MenuRestoreWindow" xml:space="preserve">
-    <value>Restore window</value>
+    <value>Expand to paper</value>
   </data>
   <data name="MenuStrikethrough" xml:space="preserve">
     <value>Strikethrough</value>
@@ -395,7 +398,7 @@ Error: {0}</value>
     <value>Click to edit title</value>
   </data>
   <data name="ToolTipOpenMarkdownEditor" xml:space="preserve">
-    <value>Open in default {0} editor</value>
+    <value>Open in {0} editor</value>
   </data>
   <data name="ToolTipResetTextZoom" xml:space="preserve">
     <value>Click to reset to 100%</value>

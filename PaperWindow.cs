@@ -64,6 +64,10 @@ public sealed partial class PaperWindow : Window
     private Button? _openMarkdownButton;
     private Button? _linkNoteButton;
     private Grid? _topBar;
+    private Grid? _topBarTitleArea;
+    private Border? _topBarTitleHost;
+    private StackPanel? _topBarButtonsHost;
+    private StackPanel? _topBarActionButtonsHost;
     private TextBlock? _titleText;
     private TextBox? _titleEditBox;
     private TextBlock? _textZoomIndicator;
@@ -86,6 +90,7 @@ public sealed partial class PaperWindow : Window
     private readonly List<WeakReference<ContextMenu>> _themedContextMenus = new();
     private Action? _showNotePreview;
     private readonly List<List<PaperItem>> _undoStack = new();
+    private bool _updatingTopBarResponsiveLayout;
     private readonly List<List<PaperItem>> _redoStack = new();
     private const int MaxUndoDepth = 100;
     private string? _activeOriginalItemId;
@@ -172,6 +177,7 @@ public sealed partial class PaperWindow : Window
     private FontWeight TitleFontWeight =>
         AppTypography.FontWeightFor(_controller.State.TitleTextBold);
     private double TitleLineHeight => Math.Ceiling(TitleFontSize + 2);
+    private const double TopBarCollisionGap = 2.0;
     private const double TitleBarDragThreshold = 1.0;
     private const double CapsuleCloseGlyphNormalOffset = -1;
     private const double DeepCapsuleSlotOutlineThickness = 2;
@@ -574,7 +580,11 @@ public sealed partial class PaperWindow : Window
                 System.Windows.Threading.DispatcherPriority.Normal);
         };
         LocationChanged += (_, _) => HandleWindowGeometryChanged();
-        SizeChanged += (_, _) => HandleWindowGeometryChanged();
+        SizeChanged += (_, _) =>
+        {
+            HandleWindowGeometryChanged();
+            UpdateTopBarResponsiveLayout();
+        };
         DpiChanged += (_, _) => _noteBox?.RefreshImageDecodeForCurrentDpi();
         StateChanged += (_, _) =>
         {
@@ -1442,6 +1452,7 @@ public sealed partial class PaperWindow : Window
 
         RefreshPaperTitle();
         RefreshPaperIconButton();
+        RefreshNoteLinkButton();
         UpdateTextZoom();
         UpdateDeepCapsuleSlotHostTheme();
 
@@ -1491,6 +1502,7 @@ public sealed partial class PaperWindow : Window
         {
             _openMarkdownButton.FontFamily = AppTypography.UiFontFamily;
             _openMarkdownButton.FontSize = AppTypography.Scale(10.5);
+            _openMarkdownButton.Padding = new Thickness(0, AppTypography.Scale(1.4), 0, 0);
         }
 
         if (_linkNoteButton != null)
@@ -1511,6 +1523,11 @@ public sealed partial class PaperWindow : Window
         if (_closeButton != null)
         {
             _closeButton.FontSize = AppTypography.Scale(16);
+            _closeButton.Margin = new Thickness(
+                AppTypography.Scale(1),
+                -AppTypography.Scale(0.6),
+                AppTypography.Scale(1),
+                AppTypography.Scale(0.6));
         }
 
         if (_textZoomIndicator != null)
@@ -1557,6 +1574,8 @@ public sealed partial class PaperWindow : Window
         RefreshThemedContextMenus();
 
         RefreshPaperTitle();
+        RefreshNoteLinkButton();
+        UpdateTopBarResponsiveLayout();
         ApplyCurrentCollapsedCapsuleWidth();
     }
 
@@ -1841,7 +1860,7 @@ public sealed partial class PaperWindow : Window
         top.PreviewMouseLeftButtonUp += (_, _) => EndTitleBarDragGesture(top);
         top.LostMouseCapture += (_, _) => EndTitleBarDragGesture(top);
 
-        var titleArea = new Grid
+        var titleArea = _topBarTitleArea = new Grid
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
@@ -1861,7 +1880,7 @@ public sealed partial class PaperWindow : Window
         Grid.SetColumn(_paperIconButton, 0);
         titleArea.Children.Add(_paperIconButton);
 
-        var titleHost = new Border
+        var titleHost = _topBarTitleHost = new Border
         {
             Margin = new Thickness(0, 1, 8, 1),
             Padding = new Thickness(4, 0, 5, 0),
@@ -1967,12 +1986,18 @@ public sealed partial class PaperWindow : Window
         Grid.SetColumn(titleArea, 0);
         top.Children.Add(titleArea);
 
-        var buttons = new StackPanel
+        var buttons = _topBarButtonsHost = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center
         };
+        var actionButtons = _topBarActionButtonsHost = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        buttons.Children.Add(actionButtons);
 
         _newTodoButton = IconButton("＋✓", Strings.Get("ToolTipNewTodoPaper"));
         _newTodoButton.Click += (_, _) => _controller.CreatePaper(PaperTypes.Todo, show: true, _paper);
@@ -1986,7 +2011,6 @@ public sealed partial class PaperWindow : Window
             _linkNoteButton.Width = 24;
             _linkNoteButton.FontSize = AppTypography.Scale(13);
             _linkNoteButton.Cursor = Cursors.Cross;
-            _linkNoteButton.Visibility = _controller.State.EnableTodoNoteLinks ? Visibility.Visible : Visibility.Collapsed;
             _linkNoteButton.PreviewMouseLeftButtonDown += (_, e) => BeginNoteLinkMouseGesture(_linkNoteButton, e);
             _linkNoteButton.PreviewMouseMove += (_, e) => UpdateNoteLinkMouseGesture(e);
             _linkNoteButton.PreviewMouseLeftButtonUp += (_, e) => EndNoteLinkMouseGestureFromMouseUp(e);
@@ -2011,17 +2035,24 @@ public sealed partial class PaperWindow : Window
 
                 EndNoteLinkMouseGesture(commit: false);
             };
-            buttons.Children.Add(_linkNoteButton);
+            RefreshNoteLinkButton();
+            actionButtons.Children.Add(_linkNoteButton);
 
             _openMarkdownButton = IconButton(ExternalOpenButtonLabel(), OpenMarkdownEditorToolTip());
             _openMarkdownButton.FontFamily = AppTypography.UiFontFamily;
             _openMarkdownButton.FontSize = AppTypography.Scale(10.5);
+            _openMarkdownButton.Padding = new Thickness(0, AppTypography.Scale(1.4), 0, 0);
             _openMarkdownButton.Click += (_, _) => OpenMarkdownInDefaultEditor();
-            buttons.Children.Add(_openMarkdownButton);
+            actionButtons.Children.Add(_openMarkdownButton);
         }
 
         _closeButton = IconButton("×", Strings.Get("ToolTipHideThisPaper"));
         _closeButton.FontSize = AppTypography.Scale(16);
+        _closeButton.Margin = new Thickness(
+            AppTypography.Scale(1),
+            -AppTypography.Scale(0.6),
+            AppTypography.Scale(1),
+            AppTypography.Scale(0.6));
         _closeButton.Click += (_, _) =>
         {
             if (CanDisplayAsCapsule())
@@ -2035,8 +2066,8 @@ public sealed partial class PaperWindow : Window
         };
         RefreshCloseButton();
 
-        buttons.Children.Add(_newTodoButton);
-        buttons.Children.Add(_newNoteButton);
+        actionButtons.Children.Add(_newTodoButton);
+        actionButtons.Children.Add(_newNoteButton);
         buttons.Children.Add(_closeButton);
         UpdateTopBarNewPaperButtons();
 
@@ -2059,6 +2090,149 @@ public sealed partial class PaperWindow : Window
 
         Grid.SetRow(topHost, 0);
         _shell.Children.Add(topHost);
+        Dispatcher.BeginInvoke(
+            (Action)UpdateTopBarResponsiveLayout,
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    internal void RefreshAssociationButton()
+    {
+        RefreshNoteLinkButton();
+    }
+
+    private void RefreshNoteLinkButton()
+    {
+        if (_linkNoteButton == null)
+        {
+            return;
+        }
+
+        var enabled = _controller.State.EnableTodoNoteLinks;
+        var isLinked = enabled && _controller.IsNoteLinkedToAnyTodo(_paper);
+        _linkNoteButton.Visibility =
+            enabled ? Visibility.Visible : Visibility.Collapsed;
+        _linkNoteButton.Content = isLinked ? "⦿" : "⌖";
+        _linkNoteButton.Cursor = Cursors.Cross;
+        _linkNoteButton.FontWeight =
+            isLinked ? FontWeights.Bold : FontWeights.SemiBold;
+        if (isLinked)
+        {
+            _linkNoteButton.Foreground = Theme.ActiveBrush;
+        }
+        else
+        {
+            _linkNoteButton.ClearValue(Control.ForegroundProperty);
+        }
+        _linkNoteButton.ToolTip = Strings.Get("ToolTipDragNoteToTodo");
+
+        UpdateTopBarResponsiveLayout();
+    }
+
+    private void UpdateTopBarResponsiveLayout()
+    {
+        if (_updatingTopBarResponsiveLayout ||
+            _topBar == null ||
+            _topBarTitleArea == null ||
+            _topBarTitleHost == null ||
+            _topBarButtonsHost == null ||
+            _topBarActionButtonsHost == null ||
+            _paperIconButton == null ||
+            _closeButton == null ||
+            _paper.IsCollapsed)
+        {
+            return;
+        }
+
+        var availableWidth = _topBar.ActualWidth;
+        if (!double.IsFinite(availableWidth) || availableWidth <= 0)
+        {
+            return;
+        }
+
+        _updatingTopBarResponsiveLayout = true;
+        try
+        {
+            var leftButtonWidth = TopBarOuterWidth(_paperIconButton);
+            var titleChildMinimumWidth =
+                (_topBarTitleHost.Child as FrameworkElement)?.MinWidth ?? 0;
+            var titleMinimumWidth =
+                Math.Max(
+                    Math.Max(0, _topBarTitleHost.MinWidth),
+                    Math.Max(0, titleChildMinimumWidth) +
+                    _topBarTitleHost.Padding.Left +
+                    _topBarTitleHost.Padding.Right) +
+                _topBarTitleHost.Margin.Left +
+                _topBarTitleHost.Margin.Right;
+            var actionButtonsWidth = VisibleTopBarActionButtonsWidth();
+            var persistentButtonsWidth = TopBarOuterWidth(_closeButton);
+
+            var hideRightButtons =
+                leftButtonWidth +
+                titleMinimumWidth +
+                TopBarCollisionGap +
+                actionButtonsWidth +
+                persistentButtonsWidth >
+                availableWidth;
+
+            var hideTitle =
+                hideRightButtons &&
+                leftButtonWidth +
+                titleMinimumWidth +
+                TopBarCollisionGap +
+                persistentButtonsWidth >
+                availableWidth;
+
+            if (hideTitle && _isEditingTitle)
+            {
+                CommitTitleEdit();
+            }
+
+            _topBarActionButtonsHost.Visibility = hideRightButtons
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            _topBarTitleHost.Visibility = hideTitle
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+        finally
+        {
+            _updatingTopBarResponsiveLayout = false;
+        }
+    }
+
+    private double VisibleTopBarActionButtonsWidth()
+    {
+        if (_topBarActionButtonsHost == null)
+        {
+            return 0;
+        }
+
+        var width = 0.0;
+        foreach (var child in _topBarActionButtonsHost.Children)
+        {
+            if (child is FrameworkElement element &&
+                element.Visibility == Visibility.Visible)
+            {
+                width += TopBarOuterWidth(element);
+            }
+        }
+        return width;
+    }
+
+    private static double TopBarOuterWidth(FrameworkElement element)
+    {
+        var width = element.Width;
+        if (!double.IsFinite(width) || width < 0)
+        {
+            width = element.ActualWidth;
+        }
+        if (!double.IsFinite(width) || width < 0)
+        {
+            width = element.MinWidth;
+        }
+        return Math.Max(0, width) +
+            element.Margin.Left +
+            element.Margin.Right;
     }
 
     private void BeginNoteLinkMouseGesture(FrameworkElement handle, MouseButtonEventArgs e)
@@ -2421,19 +2595,25 @@ public sealed partial class PaperWindow : Window
     {
         var menu = CreateContextMenu();
 
-        menu.Items.Add(MenuHeader(Strings.Get("MenuNew")));
+        menu.Items.Add(MenuHeader(Strings.Get("MenuQuick")));
         menu.Items.Add(MenuItem(Strings.Get("MenuNewTodoPaper"), (_, _) => _controller.CreatePaper(PaperTypes.Todo, show: true, _paper)));
         menu.Items.Add(MenuItem(Strings.Get("MenuNewNotePaper"), (_, _) => _controller.CreatePaper(PaperTypes.Note, show: true, _paper)));
-
-        if (_paper.Type == PaperTypes.Todo)
-        {
-            menu.Items.Add(MenuSeparator());
-            menu.Items.Add(MenuHeader(Strings.Get("MenuTodo")));
-            menu.Items.Add(MenuItem(Strings.Get("MenuClearDone"), (_, _) => ClearDoneItems()));
-        }
+        menu.Items.Add(MenuItem(Strings.Get("TraySettings"), (_, _) => _controller.OpenSettingsWindow()));
 
         menu.Items.Add(MenuSeparator());
         menu.Items.Add(MenuHeader(_controller.PaperCapsuleTitle(_paper)));
+
+        if (_paper.Type == PaperTypes.Todo)
+        {
+            menu.Items.Add(MenuItem(Strings.Get("MenuClearDone"), (_, _) => ClearDoneItems()));
+        }
+        else if (_paper.Type == PaperTypes.Note)
+        {
+            // 3.2 has no pluggable paper-body structure. Keep the note action direct.
+            menu.Items.Add(MenuItem(
+                OpenMarkdownEditorToolTip(),
+                (_, _) => OpenMarkdownInDefaultEditor()));
+        }
 
         if (CanDisplayAsCapsule())
         {
@@ -2444,12 +2624,9 @@ public sealed partial class PaperWindow : Window
             }
             else if (_paper.IsCollapsed)
             {
-                if (!forDeepCapsuleSlot)
-                {
-                    menu.Items.Add(MenuItem(
-                        Strings.Get("MenuRestoreWindow"),
-                        (_, _) => SetCollapsedState(false, activateOnExpand: true)));
-                }
+                menu.Items.Add(MenuItem(
+                    Strings.Get("MenuRestoreWindow"),
+                    (_, _) => OpenCapsuleForEditing()));
             }
             else
             {
@@ -2458,7 +2635,10 @@ public sealed partial class PaperWindow : Window
         }
 
         menu.Items.Add(MenuItem(Strings.Get("MenuHide"), (_, _) => _controller.HidePaper(_paper)));
-        menu.Items.Add(MenuItem(Strings.Get("MenuDelete"), (_, _) => DeletePaperFromPaperMenu()));
+        menu.Items.Add(MenuItem(
+            Strings.Get("MenuDelete"),
+            (_, _) => DeletePaperFromPaperMenu(),
+            isDanger: true));
 
         return menu;
     }
@@ -2703,6 +2883,9 @@ public sealed partial class PaperWindow : Window
         {
             _openMarkdownButton.Visibility = _controller.State.ShowTopBarExternalOpenButton ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        RefreshNoteLinkButton();
+        UpdateTopBarResponsiveLayout();
     }
 
     private void ConfirmAndDeletePaper()
@@ -3078,6 +3261,7 @@ public sealed partial class PaperWindow : Window
         menu.Resources["WeakTextBrushKey"] = WeakTextBrush;
         menu.Resources["HoverBrushKey"] = HoverBrush;
         menu.Resources["MenuHoverBrushKey"] = MenuHoverBrush;
+        menu.Resources["DangerTextBrushKey"] = TrashTextBrush;
         menu.Background = PaperBrush;
         menu.BorderBrush = PaperBorderBrush;
         menu.Foreground = TextBrush;
@@ -3107,7 +3291,10 @@ public sealed partial class PaperWindow : Window
         return item;
     }
 
-    private static MenuItem MenuItem(string header, RoutedEventHandler click)
+    private static MenuItem MenuItem(
+        string header,
+        RoutedEventHandler click,
+        bool isDanger = false)
     {
         var item = new MenuItem
         {
@@ -3115,7 +3302,9 @@ public sealed partial class PaperWindow : Window
             Padding = new Thickness(8, 4, 10, 4),
             Background = Brushes.Transparent
         };
-        item.SetResourceReference(Control.ForegroundProperty, "TextBrushKey");
+        item.SetResourceReference(
+            Control.ForegroundProperty,
+            isDanger ? "DangerTextBrushKey" : "TextBrushKey");
         item.Click += click;
         return item;
     }

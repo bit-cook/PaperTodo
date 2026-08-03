@@ -1891,6 +1891,7 @@ public sealed partial class AppController : IDisposable
     {
         foreach (var window in _windows.Values)
         {
+            window.RefreshAssociationButton();
             window.RefreshCapsuleEligibility();
         }
 
@@ -1903,6 +1904,20 @@ public sealed partial class AppController : IDisposable
 
     public void RefreshCapsuleEligibilityForLinkedNotes(IEnumerable<string?> noteIds)
     {
+        var linkedNoteIds = noteIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var noteId in linkedNoteIds)
+        {
+            if (_windows.TryGetValue(noteId, out var noteWindow))
+            {
+                noteWindow.RefreshAssociationButton();
+            }
+        }
+
         if (!State.EnableTodoNoteLinks ||
             !State.HideLinkedNotesFromCapsules ||
             !State.UseCapsuleMode)
@@ -1911,9 +1926,7 @@ public sealed partial class AppController : IDisposable
         }
 
         var refreshedAny = false;
-        foreach (var noteId in noteIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.Ordinal))
+        foreach (var noteId in linkedNoteIds)
         {
             var note = FindNote(noteId);
             if (note == null)

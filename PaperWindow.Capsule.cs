@@ -72,6 +72,37 @@ public sealed partial class PaperWindow
         }
     }
 
+    private void RefreshPaperContextMenus()
+    {
+        if (!_isShellBuilt)
+        {
+            return;
+        }
+
+        // WPF ContextMenu instances cannot be shared by multiple owners.
+        _paperChrome.ContextMenu = BuildPaperContextMenu();
+
+        if (_capsuleLeftArea != null)
+        {
+            _capsuleLeftArea.ContextMenu = BuildPaperContextMenu();
+        }
+
+        if (_capsuleCloseArea != null)
+        {
+            _capsuleCloseArea.ContextMenu = BuildPaperContextMenu();
+        }
+
+        if (_edgeCapsuleHost != null)
+        {
+            _edgeCapsuleHost.SetContextMenu(BuildDeepCapsuleSlotContextMenu());
+        }
+
+        if (_noteBox?.IsPreviewMode == true)
+        {
+            _noteBox.ContextMenu = BuildPaperContextMenu();
+        }
+    }
+
     public void UpdateCapsuleMode()
     {
         RefreshCloseButton();
@@ -86,7 +117,7 @@ public sealed partial class PaperWindow
 
         if (_isShellBuilt)
         {
-            _paperChrome.ContextMenu = BuildPaperContextMenu();
+            RefreshPaperContextMenus();
             UpdateTextZoom();
         }
     }
@@ -102,11 +133,7 @@ public sealed partial class PaperWindow
 
         if (_isShellBuilt)
         {
-            _paperChrome.ContextMenu = BuildPaperContextMenu();
-        }
-        if (_capsuleLeftArea != null)
-        {
-            _capsuleLeftArea.ContextMenu = BuildPaperContextMenu();
+            RefreshPaperContextMenus();
         }
     }
 
@@ -455,7 +482,7 @@ public sealed partial class PaperWindow
             else
             {
                 RefreshCloseButton();
-                _paperChrome.ContextMenu = BuildPaperContextMenu();
+                RefreshPaperContextMenus();
             }
             return;
         }
@@ -872,7 +899,7 @@ public sealed partial class PaperWindow
             }
         }
 
-        _paperChrome.ContextMenu = BuildPaperContextMenu();
+        RefreshPaperContextMenus();
         if (_paper.Type == PaperTypes.Note)
         {
             _controller.RefreshTodoRowsForLinkedNote(_paper.Id);

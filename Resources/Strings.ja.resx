@@ -256,6 +256,9 @@ PaperTodo を手動でもう一度開いてください。問題が繰り返さ�
   <data name="MenuList" xml:space="preserve">
     <value>リスト</value>
   </data>
+  <data name="MenuQuick" xml:space="preserve">
+    <value>クイック</value>
+  </data>
   <data name="MenuNew" xml:space="preserve">
     <value>新規</value>
   </data>
@@ -272,7 +275,7 @@ PaperTodo を手動でもう一度開いてください。問題が繰り返さ�
     <value>タイトルを変更</value>
   </data>
   <data name="MenuRestoreWindow" xml:space="preserve">
-    <value>ウィンドウを復元</value>
+    <value>紙片として展開</value>
   </data>
   <data name="MenuStrikethrough" xml:space="preserve">
     <value>取り消し線</value>
@@ -395,7 +398,7 @@ PaperTodo を手動でもう一度開いてください。問題が繰り返さ�
     <value>クリックしてタイトルを編集</value>
   </data>
   <data name="ToolTipOpenMarkdownEditor" xml:space="preserve">
-    <value>既定の {0} エディターで開く</value>
+    <value>{0} エディターで開く</value>
   </data>
   <data name="ToolTipResetTextZoom" xml:space="preserve">
     <value>クリックして 100% に戻す</value>

@@ -959,10 +959,7 @@ public sealed partial class PaperWindow
 
     public void UpdateTodoLinkFeature()
     {
-        if (_linkNoteButton != null)
-        {
-            _linkNoteButton.Visibility = _controller.State.EnableTodoNoteLinks ? Visibility.Visible : Visibility.Collapsed;
-        }
+        RefreshNoteLinkButton();
 
         if (!_controller.State.EnableTodoNoteLinks)
         {
