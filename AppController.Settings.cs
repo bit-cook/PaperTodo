@@ -326,7 +326,7 @@ public sealed partial class AppController
         }
 
         State.FullscreenTopmostMode = normalized;
-        RefreshTopmostForForegroundWindow();
+        RefreshFullscreenAvoidanceRuntime();
         SaveNow();
         RefreshSettingsWindowContent();
     }

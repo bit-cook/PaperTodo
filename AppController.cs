@@ -42,6 +42,7 @@ public sealed partial class AppController : IDisposable
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _forceSaveTimer;
     private readonly DispatcherTimer _topmostRefreshTimer;
+    private readonly DispatcherTimer _fullscreenEventDebounceTimer;
     private readonly DispatcherTimer _displayMetricsRefreshTimer;
     private bool _hasPendingDirty;
 
@@ -70,6 +71,8 @@ public sealed partial class AppController : IDisposable
     private long _saveVersion;
     private long _stateRevision;
     private readonly Dictionary<string, int> _visibilityAnimationVersions = new();
+    private FullscreenForegroundWindowWatcher? _fullscreenForegroundWindowWatcher;
+    private int _fullscreenEventForceGlobalScan;
     private IntPtr _fullscreenAvoidanceWindow;
     private string _fullscreenAvoidanceMonitorDeviceName = "";
     private DateTimeOffset _lastFullscreenGlobalScanAt = DateTimeOffset.MinValue;
@@ -195,9 +198,23 @@ public sealed partial class AppController : IDisposable
 
         _topmostRefreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(200)
+            Interval = TimeSpan.FromSeconds(1)
         };
         _topmostRefreshTimer.Tick += (_, _) => RefreshTopmostForForegroundWindow();
+
+        _fullscreenEventDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(75)
+        };
+        _fullscreenEventDebounceTimer.Tick += (_, _) =>
+        {
+            _fullscreenEventDebounceTimer.Stop();
+            if (!IsExiting && ShouldAvoidFullscreenTopmost)
+            {
+                var forceGlobalScan = Interlocked.Exchange(ref _fullscreenEventForceGlobalScan, 0) != 0;
+                RefreshTopmostForForegroundWindow(forceGlobalScan);
+            }
+        };
 
         _displayMetricsRefreshTimer = new DispatcherTimer
         {
@@ -246,8 +263,7 @@ public sealed partial class AppController : IDisposable
         _ = Application.Current.Dispatcher.BeginInvoke(
             () => PaperWindow.EnsurePersistentScriptProcessForSettings(State),
             DispatcherPriority.SystemIdle);
-        RefreshTopmostForForegroundWindow();
-        _topmostRefreshTimer.Start();
+        RefreshFullscreenAvoidanceRuntime();
 
         if (State.Papers.Count == 0)
         {
@@ -1402,6 +1418,87 @@ public sealed partial class AppController : IDisposable
         }
     }
 
+    private void RefreshFullscreenAvoidanceRuntime()
+    {
+        if (IsExiting)
+        {
+            return;
+        }
+
+        if (!ShouldAvoidFullscreenTopmost)
+        {
+            StopFullscreenAvoidanceRuntime(restoreTopmost: true);
+            return;
+        }
+
+        _fullscreenForegroundWindowWatcher ??=
+            new FullscreenForegroundWindowWatcher(QueueFullscreenForegroundRefresh);
+        _lastFullscreenGlobalScanAt = DateTimeOffset.MinValue;
+        RefreshTopmostForForegroundWindow(forceGlobalScan: true);
+        _topmostRefreshTimer.Start();
+    }
+
+    private void StopFullscreenAvoidanceRuntime(bool restoreTopmost)
+    {
+        _topmostRefreshTimer.Stop();
+        _fullscreenEventDebounceTimer.Stop();
+        _ = Interlocked.Exchange(ref _fullscreenEventForceGlobalScan, 0);
+        _fullscreenForegroundWindowWatcher?.Dispose();
+        _fullscreenForegroundWindowWatcher = null;
+        _lastFullscreenGlobalScanAt = DateTimeOffset.MinValue;
+        _fullscreenAvoidanceWindow = IntPtr.Zero;
+        _fullscreenAvoidanceMonitorDeviceName = "";
+
+        if (!restoreTopmost)
+        {
+            return;
+        }
+
+        foreach (var window in _windows.Values)
+        {
+            window.RefreshEffectiveTopmost();
+        }
+        foreach (var m in _masterCapsules.Values)
+        {
+            m.RefreshEffectiveTopmost();
+        }
+    }
+
+    private void QueueFullscreenForegroundRefresh(bool forceGlobalScan)
+    {
+        if (IsExiting || !ShouldAvoidFullscreenTopmost)
+        {
+            return;
+        }
+
+        if (forceGlobalScan)
+        {
+            _ = Interlocked.Exchange(ref _fullscreenEventForceGlobalScan, 1);
+        }
+
+        var dispatcher = _fullscreenEventDebounceTimer.Dispatcher;
+        if (!dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(
+                (Action)RestartFullscreenEventDebounce,
+                DispatcherPriority.Background);
+            return;
+        }
+
+        RestartFullscreenEventDebounce();
+    }
+
+    private void RestartFullscreenEventDebounce()
+    {
+        if (IsExiting || !ShouldAvoidFullscreenTopmost)
+        {
+            return;
+        }
+
+        _fullscreenEventDebounceTimer.Stop();
+        _fullscreenEventDebounceTimer.Start();
+    }
+
     private void RefreshTopmostForForegroundWindow(bool forceGlobalScan = false)
     {
         var avoidanceWindow = IntPtr.Zero;
@@ -1410,7 +1507,7 @@ public sealed partial class AppController : IDisposable
         {
             var now = DateTimeOffset.UtcNow;
             var allowGlobalScan = forceGlobalScan ||
-                now - _lastFullscreenGlobalScanAt >= TimeSpan.FromSeconds(1);
+                now - _lastFullscreenGlobalScanAt >= TimeSpan.FromSeconds(5);
             if (allowGlobalScan)
             {
                 _lastFullscreenGlobalScanAt = now;
@@ -1432,11 +1529,6 @@ public sealed partial class AppController : IDisposable
             StringComparison.OrdinalIgnoreCase);
         if (!avoidanceWindowChanged && !avoidanceMonitorChanged)
         {
-            if (avoidanceWindow == IntPtr.Zero)
-            {
-                RefreshFloatingSurfaceZOrder();
-            }
-
             if (ShouldAvoidFullscreenTopmost)
             {
                 WriteFullscreenDebugSnapshot(avoidanceWindow != IntPtr.Zero);
@@ -3413,7 +3505,7 @@ public sealed partial class AppController : IDisposable
         _lifecycleState = AppLifecycleState.Exiting;
         _saveTimer.Stop();
         _forceSaveTimer.Stop();
-        _topmostRefreshTimer.Stop();
+        StopFullscreenAvoidanceRuntime(restoreTopmost: false);
         _displayMetricsRefreshTimer.Stop();
 
         if (!TrySaveNow(sync: true))
@@ -3511,7 +3603,7 @@ public sealed partial class AppController : IDisposable
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _saveTimer.Stop();
         _forceSaveTimer.Stop();
-        _topmostRefreshTimer.Stop();
+        StopFullscreenAvoidanceRuntime(restoreTopmost: false);
         _displayMetricsRefreshTimer.Stop();
         ClearNoteLinkDropTarget();
         _deepCapsuleContextMenuOwners.Clear();
