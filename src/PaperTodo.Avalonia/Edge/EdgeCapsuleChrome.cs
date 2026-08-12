@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using PaperTodo.Avalonia.Papers;
 
 namespace PaperTodo.Avalonia.Edge;
 
@@ -11,20 +13,19 @@ internal sealed class EdgeCapsuleChrome : Grid
     private readonly Border _close;
     private readonly TextBlock _title;
 
-    public EdgeCapsuleChrome()
+    public EdgeCapsuleChrome(AppState state)
     {
+        var palette = PaperThemePalette.Resolve(state);
         ClipToBounds = false;
         ColumnDefinitions = new ColumnDefinitions("Auto,Auto");
 
         _body = new Border
         {
             Height = PaperLayoutDefaults.CapsuleHeight,
-            Background = new SolidColorBrush(Color.FromArgb(245, 252, 247, 228)),
-            CornerRadius = new CornerRadius(
-                EdgeCapsuleLayout.CornerRadius,
-                EdgeCapsuleLayout.CornerRadius,
-                EdgeCapsuleLayout.CornerRadius,
-                EdgeCapsuleLayout.CornerRadius),
+            Background = palette.PaperBrush,
+            BorderBrush = palette.PaperBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(EdgeCapsuleLayout.CornerRadius),
             Padding = new Thickness(14, 0),
             VerticalAlignment = VerticalAlignment.Top
         };
@@ -32,21 +33,44 @@ internal sealed class EdgeCapsuleChrome : Grid
         {
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
-            MaxWidth = EdgeCapsulePreviewSize.MaximumWidthDip
+            MaxWidth = EdgeCapsulePreviewSize.MaximumWidthDip,
+            Foreground = palette.TextBrush,
+            FontSize = VisualTextSizes.FontSize(
+                12,
+                state.CapsuleTextSize,
+                OverallFontScales.Normalize(state.Zoom)),
+            FontWeight = state.CapsuleTextBold ? FontWeight.SemiBold : FontWeight.Normal
         };
         _body.Child = _title;
+        _body.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                BodyInvoked?.Invoke();
+                e.Handled = true;
+            }
+        };
 
         _close = new Border
         {
             Width = 0,
             Height = PaperLayoutDefaults.CapsuleHeight,
-            Background = new SolidColorBrush(Color.FromArgb(245, 238, 118, 96)),
+            Background = palette.DangerBrushWithAlpha(220),
             Child = new TextBlock
             {
                 Text = "×",
                 FontSize = 18,
+                Foreground = Brushes.White,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        _close.PointerPressed += (_, e) =>
+        {
+            if (_close.Width > 0 && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                CloseInvoked?.Invoke();
+                e.Handled = true;
             }
         };
 
@@ -54,6 +78,9 @@ internal sealed class EdgeCapsuleChrome : Grid
         Children.Add(_close);
         Grid.SetColumn(_close, 1);
     }
+
+    public event Action? BodyInvoked;
+    public event Action? CloseInvoked;
 
     public void SetTitle(string? title) => _title.Text = title ?? string.Empty;
 
@@ -67,8 +94,7 @@ internal sealed class EdgeCapsuleChrome : Grid
         var radius = EdgeCapsuleLayout.CornerRadius;
         _body.Width = Math.Max(1, bodyWidthDip);
         _body.Opacity = Math.Clamp(contentOpacity, 0, 1);
-        _body.BorderBrush = outlineVisible ? Brushes.White : null;
-        _body.BorderThickness = outlineVisible ? new Thickness(1) : default;
+        _body.BorderThickness = outlineVisible ? new Thickness(2) : new Thickness(1);
         _close.Width = Math.Max(0, closeWidthDip);
         _close.Opacity = closeWidthDip > 0 ? 1 : 0;
 

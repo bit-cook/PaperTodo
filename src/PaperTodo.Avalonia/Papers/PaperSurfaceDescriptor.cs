@@ -4,6 +4,7 @@ namespace PaperTodo.Avalonia.Papers;
 
 internal readonly record struct PaperSurfaceDescriptor(
     PaperData Paper,
+    AppState State,
     PixelPoint Position,
     Size Size,
     bool IsVisible,

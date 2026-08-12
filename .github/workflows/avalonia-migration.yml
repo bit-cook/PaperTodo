@@ -242,3 +242,20 @@ jobs:
             }
           }
           exit 0
+
+      - name: Prepare Native AOT artifact
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "papertodo-aot"
+          $artifact = Join-Path $env:GITHUB_WORKSPACE "artifact\PaperTodo-Avalonia-win-x64"
+          Remove-Item -LiteralPath $artifact -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item -Path (Join-Path $publish '*') -Destination $artifact -Recurse -Force
+          Get-ChildItem -LiteralPath $artifact -Filter *.pdb -File | Remove-Item -Force
+          Get-ChildItem -LiteralPath $artifact -File | Format-Table Name, Length
+
+      - name: Upload Native AOT artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: PaperTodo-Avalonia-win-x64-NativeAOT
+          if-no-files-found: error
+          path: artifact/PaperTodo-Avalonia-win-x64/**

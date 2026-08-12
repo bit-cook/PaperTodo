@@ -1,8 +1,9 @@
-using PaperTodo.Avalonia.Edge;
-using PaperTodo.Avalonia.Papers;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Avalonia.Threading;
+using PaperTodo.Avalonia.Edge;
+using PaperTodo.Avalonia.Papers;
 using PaperTodo.PluginHost;
 
 namespace PaperTodo.Avalonia.Application;
@@ -13,6 +14,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
     private readonly AvaloniaStateStorePlatform _stateStorePlatform;
     private readonly PaperSurfaceRegistry _papers;
     private readonly EdgeCapsuleQueueSurfaceRegistry _edges;
+    private readonly DispatcherTimer _saveTimer;
     private AvaloniaGlobalHotkeyController? _globalHotkeys;
     private PluginCatalogSnapshot? _pluginCatalog;
     private Screens? _observedScreens;
@@ -33,6 +35,12 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _stateStorePlatform = stateStorePlatform;
         _papers = papers;
         _edges = edges;
+        _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _saveTimer.Tick += (_, _) =>
+        {
+            _saveTimer.Stop();
+            SaveCurrentState();
+        };
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -44,6 +52,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         {
             _observedScreens.Changed += OnScreensChanged;
         }
+
         _state = _stateStore.Load();
         foreach (var paper in _state.Papers)
         {
@@ -62,7 +71,6 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             _stateStorePlatform.InfrastructureTopLevel,
             _state,
             command => CommandRequested?.Invoke(command));
-        return;
     }
 
     public async ValueTask SaveWithoutStartingAsync(CancellationToken cancellationToken)
@@ -74,9 +82,6 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                 "The exit-only save path cannot run after the workspace has started.");
         }
 
-        // Preserve the existing no-primary `exit` contract: load and synchronously save the real
-        // state, including normal platform normalization, without restoring windows, starting the
-        // tray, scanning plugins, registering hotkeys or creating a default paper.
         cancellationToken.ThrowIfCancellationRequested();
         await _stateStorePlatform.InitializeScreensAsync(cancellationToken);
         var state = _stateStore.Load();
@@ -84,18 +89,13 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _stateStore.SaveJsonSync(json, Interlocked.Increment(ref _saveVersion));
     }
 
-    private static void ReportPluginCompatibility(
-        AppState state,
-        PluginCatalogSnapshot catalog)
+    private static void ReportPluginCompatibility(AppState state, PluginCatalogSnapshot catalog)
     {
         foreach (var paper in state.Papers.Where(item => item.Type == PaperTypes.Note))
         {
             var provider = catalog.ResolveProvider(paper.BodyProviderId);
             if (provider.Compatibility != PluginCompatibility.Compatible)
             {
-                // Preserve the saved provider ID/body state. Until the Web paper UI lands, this
-                // diagnostic makes the compatibility fallback explicit without silently changing
-                // the note to Markdown or touching plugins/data.
                 System.Diagnostics.Trace.TraceWarning(
                     "PaperTodo Avalonia note '{0}' provider '{1}' is unavailable: {2}",
                     paper.Id,
@@ -131,10 +131,6 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             await screens.RequestScreenDetails();
             if (_started && !_disposed && ReferenceEquals(screens, _observedScreens))
             {
-                // Monitor removal, work-area and DPI changes are legitimate native host
-                // topology boundaries. Recreate each queue HWND so the steady-state grow-only
-                // motion envelope cannot retain stale off-screen or oversized bounds after a
-                // monitor removal, work-area shrink or DPI transition.
                 _edges.CloseAll();
                 ArrangeEdgeCapsules(animate: false);
             }
@@ -159,9 +155,6 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
         if (state.Papers.Count == 0)
         {
-            // Preserve the WPF startup contract: an ordinary launch creates one todo, while an
-            // initial hide/toggle creates that default todo hidden. Explicit new commands create
-            // exactly the requested paper and never create an additional default.
             switch (command.Kind)
             {
                 case StartupCommandKind.None:
@@ -224,6 +217,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         }
 
         ArrangeEdgeCapsules(animate: true);
+        QueueSaveCurrentState();
     }
 
     private void ToggleAllPaperVisibility()
@@ -234,16 +228,15 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
 
     public ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        // Unregister process-wide keys before closing any HWND or persisting shutdown state.
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
         DetachScreens();
+        _saveTimer.Stop();
         _papers.CloseAll();
         _edges.CloseAll();
         if (_state is not null)
         {
-            var json = _stateStore.SerializeState(_state);
-            _stateStore.SaveJsonSync(json, Interlocked.Increment(ref _saveVersion));
+            SaveCurrentState();
         }
 
         _started = false;
@@ -275,17 +268,21 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
 
     private PaperSurfaceWindow CreatePaperSurface(PaperData paper)
     {
+        var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
         var surface = _papers.Create(new PaperSurfaceDescriptor(
             paper,
+            state,
             LegacyPaperGeometryAdapter.ToDevicePosition(paper.X, paper.Y),
             new Size(Math.Max(1, paper.Width), Math.Max(1, paper.Height)),
             paper.IsVisible && !paper.IsCollapsed,
             paper.AlwaysOnTop));
+
         surface.PositionChanged += (_, _) =>
         {
             var stored = LegacyPaperGeometryAdapter.ToStoredPosition(surface.Position);
             paper.X = stored.X;
             paper.Y = stored.Y;
+            QueueSaveCurrentState();
         };
         surface.PropertyChanged += (_, args) =>
         {
@@ -293,9 +290,86 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             {
                 paper.Width = surface.ClientSize.Width;
                 paper.Height = surface.ClientSize.Height;
+                QueueSaveCurrentState();
             }
         };
+        surface.Changed += QueueSaveCurrentState;
+        surface.NewTodoRequested += () => CreatePaper(PaperTypes.Todo, visible: true);
+        surface.NewNoteRequested += () => CreatePaper(PaperTypes.Note, visible: true);
+        surface.CloseRequested += () =>
+        {
+            if (state.UseCapsuleMode && state.UseDeepCapsuleMode)
+            {
+                CollapsePaper(paper, surface);
+            }
+            else
+            {
+                HidePaper(paper, surface);
+            }
+        };
+        surface.CollapseRequested += () => CollapsePaper(paper, surface);
+        surface.DeleteRequested += () => DeletePaper(paper, surface);
         return surface;
+    }
+
+    private void HidePaper(PaperData paper, IPaperSurface surface)
+    {
+        paper.IsVisible = false;
+        surface.Hide();
+        ArrangeEdgeCapsules(animate: true);
+        SaveCurrentState();
+    }
+
+    private void CollapsePaper(PaperData paper, IPaperSurface surface)
+    {
+        var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
+        if (!state.UseCapsuleMode || !state.UseDeepCapsuleMode)
+        {
+            HidePaper(paper, surface);
+            return;
+        }
+
+        paper.IsVisible = true;
+        paper.IsCollapsed = true;
+        surface.Close();
+        ArrangeEdgeCapsules(animate: true);
+        SaveCurrentState();
+    }
+
+    private void DeletePaper(PaperData paper, IPaperSurface surface)
+    {
+        var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
+        state.Papers.RemoveAll(candidate => candidate.Id == paper.Id);
+        surface.Close();
+        ArrangeEdgeCapsules(animate: true);
+        SaveCurrentState();
+    }
+
+    private void ExpandCollapsedPaper(PaperData paper)
+    {
+        if (!paper.IsCollapsed)
+        {
+            return;
+        }
+
+        paper.IsCollapsed = false;
+        paper.IsVisible = true;
+        if (!_papers.TryGet(paper.Id, out var surface))
+        {
+            surface = CreatePaperSurface(paper);
+        }
+
+        surface.Show();
+        surface.Window.Activate();
+        ArrangeEdgeCapsules(animate: true);
+        SaveCurrentState();
+    }
+
+    private void HideCollapsedPaper(PaperData paper)
+    {
+        paper.IsVisible = false;
+        ArrangeEdgeCapsules(animate: true);
+        SaveCurrentState();
     }
 
     private void ArrangeEdgeCapsules(bool animate)
@@ -315,9 +389,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         var plan = EdgeCapsuleQueueCoordinator.Build(members, state.UseCapsuleCollapseAll);
         var desiredQueues = plan.Queues.ToDictionary(
             queue => ParseQueueKey(queue.Key).Normalize(),
-            queue => queue.Papers
-                .Select(paper => paper.Id)
-                .ToHashSet(StringComparer.Ordinal));
+            queue => queue.Papers.Select(paper => paper.Id).ToHashSet(StringComparer.Ordinal));
 
         foreach (var existing in _edges.Surfaces.ToArray())
         {
@@ -352,8 +424,10 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                 var paper = collapsed.First(item => item.Id == queuePaper.Id);
                 if (!surface.TryGetNode(paper.Id, out _))
                 {
-                    var chrome = new EdgeCapsuleChrome();
+                    var chrome = new EdgeCapsuleChrome(state);
                     chrome.SetTitle(string.IsNullOrWhiteSpace(paper.Title) ? paper.Type : paper.Title);
+                    chrome.BodyInvoked += () => ExpandCollapsedPaper(paper);
+                    chrome.CloseInvoked += () => HideCollapsedPaper(paper);
                     surface.AttachPaper(paper.Id, chrome);
                 }
 
@@ -364,7 +438,9 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                         placement,
                         EdgeCapsulePaperForm.Collapsed,
                         retracted: false)).Model;
-                var margin = state.DeepCapsuleQueueStartTopMargins.TryGetValue(queue.Key, out var stored)
+                var margin = state.DeepCapsuleQueueStartTopMargins.TryGetValue(
+                    queue.Key,
+                    out var stored)
                     ? stored
                     : state.DeepCapsuleStartTopMargin;
                 var maximumPreviewHeight = Math.Min(
@@ -381,7 +457,9 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                     HostWidthDip: Math.Min(
                         EdgeCapsulePreviewSize.MaximumWidthDip,
                         monitor.LocalWorkAreaDip.Width),
-                    HostHeightDip: Math.Max(PaperLayoutDefaults.CapsuleHeight, maximumPreviewHeight),
+                    HostHeightDip: Math.Max(
+                        PaperLayoutDefaults.CapsuleHeight,
+                        maximumPreviewHeight),
                     HeightDip: PaperLayoutDefaults.CapsuleHeight,
                     PreviewWidthDip: EdgeCapsulePreviewSize.MinimumWidthDip,
                     PreviewHeightDip: EdgeCapsulePreviewSize.MinimumHeightDip,
@@ -399,8 +477,20 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         }
     }
 
+    private void QueueSaveCurrentState()
+    {
+        if (_state is null || _disposed)
+        {
+            return;
+        }
+
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
     private void SaveCurrentState()
     {
+        _saveTimer.Stop();
         if (_state is null)
         {
             return;
@@ -463,6 +553,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         }
 
         _disposed = true;
+        _saveTimer.Stop();
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
         _pluginCatalog = null;

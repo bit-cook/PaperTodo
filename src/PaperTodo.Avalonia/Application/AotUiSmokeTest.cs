@@ -1,16 +1,15 @@
 using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Layout;
-using Avalonia.Media;
 using Avalonia.Threading;
+using PaperTodo.Avalonia.Papers;
 using PaperTodo.Avalonia.Tray;
 
 namespace PaperTodo.Avalonia.Application;
 
 /// <summary>
-/// Starts a real Avalonia window from the published executable, lets the compositor render it,
-/// verifies the Win32 host and embedded icon, and then exits without loading user state.
+/// Starts the real Avalonia paper surface from the published executable, lets the compositor
+/// render it, verifies the Win32 host and embedded icon, and then exits without loading user state.
+/// This keeps CI tied to the actual product window instead of a generic framework test window.
 /// </summary>
 internal static class AotUiSmokeTest
 {
@@ -24,32 +23,42 @@ internal static class AotUiSmokeTest
     {
         Dispatcher.UIThread.VerifyAccess();
 
-        var window = new Window
+        var state = new AppState
         {
-            Title = "PaperTodo Native AOT UI smoke",
-            Width = 320,
-            Height = 120,
-            CanResize = false,
-            ShowInTaskbar = false,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            Icon = ApplicationIconLoader.Load(),
-            Content = new Border
-            {
-                Background = Brushes.White,
-                Child = new TextBlock
+            Theme = "light",
+            ColorScheme = ColorSchemes.Warm,
+            UseCapsuleMode = true,
+            UseDeepCapsuleMode = true
+        };
+        var paper = new PaperData
+        {
+            Type = PaperTypes.Todo,
+            Title = "PaperTodo",
+            Width = PaperLayoutDefaults.TodoDefaultWidth,
+            Height = 180,
+            IsVisible = true,
+            Items =
+            [
+                new PaperItem
                 {
-                    Text = "PaperTodo",
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
+                    Text = "Native AOT UI smoke",
+                    Order = 0
                 }
-            }
+            ]
+        };
+        var window = new PaperSurfaceWindow(new PaperSurfaceDescriptor(
+            paper,
+            state,
+            new PixelPoint(100, 100),
+            new Size(paper.Width, paper.Height),
+            IsVisible: true,
+            AlwaysOnTop: false))
+        {
+            Icon = ApplicationIconLoader.Load()
         };
 
         window.Opened += (_, _) =>
         {
-            // Wait for two real animation ticks rather than a dispatcher delay. This roots and
-            // exercises the Win32, Skia/ANGLE, compiled-XAML and resource paths that the
-            // LMDB-only smoke deliberately does not touch.
             window.RequestAnimationFrame(_ =>
                 window.RequestAnimationFrame(_ => Complete(window, desktop)));
         };
@@ -57,7 +66,7 @@ internal static class AotUiSmokeTest
     }
 
     private static void Complete(
-        Window window,
+        PaperSurfaceWindow window,
         IClassicDesktopStyleApplicationLifetime desktop)
     {
         var handle = window.TryGetPlatformHandle();

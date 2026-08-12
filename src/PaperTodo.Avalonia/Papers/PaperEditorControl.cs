@@ -9,63 +9,96 @@ namespace PaperTodo.Avalonia.Papers;
 internal sealed class PaperEditorControl : Grid
 {
     private readonly PaperData _paper;
-    private readonly TextBox _title;
-    private readonly TextBox _body;
+    private readonly AppState _state;
+    private readonly Action _changed;
+    private readonly Control _body;
     private readonly bool _canEditBody;
+    private bool _refreshing;
 
-    public PaperEditorControl(PaperData paper)
+    public PaperEditorControl(
+        PaperData paper,
+        AppState state,
+        PaperThemePalette palette,
+        Action changed)
     {
         _paper = paper;
+        _state = state;
+        _changed = changed;
         _canEditBody = PaperTextCodec.CanEditBody(paper);
-        RowDefinitions = new RowDefinitions("24,*");
-        Background = new SolidColorBrush(Color.FromRgb(255, 249, 218));
+        Background = Brushes.Transparent;
 
-        _title = new TextBox
+        if (paper.Type == PaperTypes.Todo)
         {
-            Background = Brushes.Transparent,
-            BorderThickness = default,
-            FontWeight = FontWeight.SemiBold,
-            Padding = new Thickness(8, 2),
-            VerticalContentAlignment = VerticalAlignment.Center
-        };
-        _title.TextChanged += (_, _) => _paper.Title = _title.Text ?? string.Empty;
+            _body = new TodoEditorControl(paper, state, palette, changed);
+            Children.Add(_body);
+            return;
+        }
 
-        _body = new TextBox
+        var body = new TextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             Background = Brushes.Transparent,
             BorderThickness = default,
             IsReadOnly = !_canEditBody,
-            Padding = new Thickness(8),
+            Padding = new Thickness(10, 8),
             VerticalContentAlignment = VerticalAlignment.Top,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Foreground = _canEditBody ? palette.TextBrush : palette.WeakTextBrush,
+            FontSize = VisualTextSizes.FontSize(
+                13,
+                _state.NoteTextSize,
+                OverallFontScales.Normalize(_state.Zoom) *
+                OverallFontScales.Normalize(_paper.TextZoom)),
+            FontWeight = _state.NoteTextBold ? FontWeight.SemiBold : FontWeight.Normal,
+            Watermark = _canEditBody ? TextCatalog.Current.NotePlaceholder : null
         };
         if (_canEditBody)
         {
-            _body.TextChanged += OnBodyTextChanged;
-        }
-        else
-        {
-            _body.Foreground = Brushes.DimGray;
+            body.TextChanged += OnBodyTextChanged;
         }
 
-        Children.Add(_title);
+        _body = body;
         Children.Add(_body);
-        Grid.SetRow(_body, 1);
         RefreshFromModel();
     }
 
     public void RefreshFromModel()
     {
-        _title.Text = _paper.Title;
-        _body.Text = _canEditBody
-            ? PaperTextCodec.ToEditorText(_paper)
-            : PluginBodyPlaceholder();
+        if (_body is TodoEditorControl todo)
+        {
+            todo.RefreshFromModel();
+            return;
+        }
+
+        if (_body is not TextBox body)
+        {
+            return;
+        }
+
+        _refreshing = true;
+        try
+        {
+            body.Text = _canEditBody
+                ? PaperTextCodec.ToEditorText(_paper)
+                : PluginBodyPlaceholder();
+        }
+        finally
+        {
+            _refreshing = false;
+        }
     }
 
-    private void OnBodyTextChanged(object? sender, TextChangedEventArgs e) =>
-        PaperTextCodec.ApplyEditorText(_paper, _body.Text ?? string.Empty);
+    private void OnBodyTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_refreshing || sender is not TextBox body)
+        {
+            return;
+        }
+
+        PaperTextCodec.ApplyEditorText(_paper, body.Text ?? string.Empty);
+        _changed();
+    }
 
     private string PluginBodyPlaceholder()
     {
