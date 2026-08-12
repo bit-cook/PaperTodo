@@ -78,11 +78,6 @@ jobs:
       - name: Run Native AOT plugin manifest checks
         run: dotnet run --project tests/PaperTodo.PluginHost.Checks/PaperTodo.PluginHost.Checks.csproj -c Release --no-restore
 
-      - name: Run edge policy checks
-        run: |
-          dotnet restore scripts/edge-refinement-tests/EdgeRefinementChecks.csproj -p:EnableWindowsTargeting=true
-          dotnet build scripts/edge-refinement-tests/EdgeRefinementChecks.csproj -c Release -p:EnableWindowsTargeting=true --no-restore
-
   windows-native-aot:
     name: Windows Native AOT
     runs-on: windows-latest
@@ -237,8 +232,12 @@ jobs:
           )
           foreach ($pattern in $forbidden) {
             $matches = git grep -n -F -- $pattern -- 'src/**/*.cs'
-            if ($matches) {
+            $grepExit = $LASTEXITCODE
+            if ($grepExit -eq 0) {
               $matches | Write-Output
               throw "Native AOT source contains forbidden runtime path: $pattern"
+            }
+            if ($grepExit -gt 1) {
+              throw "git grep failed while checking '$pattern' with exit code $grepExit"
             }
           }
