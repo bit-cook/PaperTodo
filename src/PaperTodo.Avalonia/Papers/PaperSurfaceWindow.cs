@@ -15,8 +15,12 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
     private readonly AppState _state;
     private readonly PaperThemePalette _palette;
     private readonly Border _paperChrome;
-    private readonly TextBox _title;
+    private readonly Border _titleHost;
+    private readonly TextBlock _titleText;
+    private readonly TextBox _titleEditBox;
+    private readonly Button _pinButton;
     private readonly PaperEditorControl _editor;
+    private string _titleBeforeEdit = string.Empty;
 
     public PaperSurfaceWindow(PaperSurfaceDescriptor descriptor)
     {
@@ -39,7 +43,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         Topmost = descriptor.AlwaysOnTop;
 
         var root = new Grid();
-
         _paperChrome = new Border
         {
             Background = _palette.PaperBrush,
@@ -53,7 +56,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         {
             RowDefinitions = new RowDefinitions($"{PaperLayoutDefaults.TopBarHeight},*")
         };
-
         var topBar = new Border
         {
             Background = _palette.TopBarBrush,
@@ -65,24 +67,28 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto")
         };
 
-        var dragHandle = new Border
-        {
-            Width = 26,
-            Background = Brushes.Transparent,
-            Child = new TextBlock
-            {
-                Text = Paper.Type == PaperTypes.Todo ? "✓" : "M",
-                Foreground = _palette.WeakTextBrush,
-                FontSize = 12,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
-        dragHandle.PointerPressed += BeginMoveFromPointer;
-        ToolTip.SetTip(dragHandle, TextCatalog.Current.MovePaper);
-        topBarGrid.Children.Add(dragHandle);
+        _pinButton = CreateTopBarButton(
+            "⌖",
+            TextCatalog.Current.AlwaysOnTop,
+            TogglePin);
+        _pinButton.MinWidth = 27;
+        UpdatePinVisual();
+        topBarGrid.Children.Add(_pinButton);
 
-        _title = new TextBox
+        _titleText = new TextBlock
+        {
+            Text = DisplayTitle(),
+            Foreground = _palette.TextBrush,
+            FontSize = VisualTextSizes.FontSize(
+                12,
+                _state.TitleTextSize,
+                OverallFontScales.Normalize(_state.Zoom)),
+            FontWeight = _state.TitleTextBold ? FontWeight.SemiBold : FontWeight.Normal,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(3, 0, 4, 0)
+        };
+        _titleEditBox = new TextBox
         {
             Text = Paper.Title ?? string.Empty,
             MaxLength = PaperTitleRules.NormalizeMaxTitleLength(_state.MaxTitleLength),
@@ -91,35 +97,61 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             Padding = new Thickness(2, 0),
             Margin = new Thickness(0),
             Foreground = _palette.TextBrush,
-            FontSize = VisualTextSizes.FontSize(
-                12,
-                _state.TitleTextSize,
-                OverallFontScales.Normalize(_state.Zoom)),
-            FontWeight = _state.TitleTextBold ? FontWeight.SemiBold : FontWeight.Normal,
+            FontSize = _titleText.FontSize,
+            FontWeight = _titleText.FontWeight,
             VerticalContentAlignment = VerticalAlignment.Center,
-            HorizontalContentAlignment = HorizontalAlignment.Left
+            IsVisible = false
         };
-        _title.TextChanged += (_, _) =>
+        _titleEditBox.KeyDown += (_, e) =>
         {
-            var text = _title.Text ?? string.Empty;
-            if (!string.Equals(Paper.Title, text, StringComparison.Ordinal))
+            if (e.Key == Key.Enter)
             {
-                Paper.Title = text;
-                Changed?.Invoke();
+                EndTitleEdit(commit: true);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape)
+            {
+                EndTitleEdit(commit: false);
+                e.Handled = true;
             }
         };
-        _title.LostFocus += (_, _) =>
+        _titleEditBox.LostFocus += (_, _) =>
         {
-            var cleaned = PaperTitleRules.CleanCustomTitle(
-                _title.Text,
-                PaperTitleRules.NormalizeMaxTitleLength(_state.MaxTitleLength));
-            if (!string.Equals(cleaned, _title.Text, StringComparison.Ordinal))
+            if (_titleEditBox.IsVisible)
             {
-                _title.Text = cleaned;
+                EndTitleEdit(commit: true);
             }
         };
-        topBarGrid.Children.Add(_title);
-        Grid.SetColumn(_title, 1);
+
+        var titleLayer = new Grid();
+        titleLayer.Children.Add(_titleText);
+        titleLayer.Children.Add(_titleEditBox);
+        _titleHost = new Border
+        {
+            Background = Brushes.Transparent,
+            Child = titleLayer
+        };
+        _titleHost.PointerPressed += (_, e) =>
+        {
+            if (_titleEditBox.IsVisible ||
+                !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            if (e.ClickCount >= 2)
+            {
+                BeginTitleEdit();
+                e.Handled = true;
+                return;
+            }
+
+            BeginMoveDrag(e);
+            e.Handled = true;
+        };
+        ToolTip.SetTip(_titleHost, TextCatalog.Current.MovePaper);
+        topBarGrid.Children.Add(_titleHost);
+        Grid.SetColumn(_titleHost, 1);
 
         var actions = new StackPanel
         {
@@ -127,7 +159,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             Spacing = 0,
             VerticalAlignment = VerticalAlignment.Stretch
         };
-
         if (_state.ShowTopBarNewTodoButton)
         {
             actions.Children.Add(CreateTopBarButton(
@@ -135,7 +166,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
                 TextCatalog.Current.NewTodo,
                 () => NewTodoRequested?.Invoke()));
         }
-
         if (_state.ShowTopBarNewNoteButton)
         {
             actions.Children.Add(CreateTopBarButton(
@@ -150,18 +180,18 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             () => CloseRequested?.Invoke());
         close.FontSize = 15;
         actions.Children.Add(close);
-
         topBarGrid.Children.Add(actions);
         Grid.SetColumn(actions, 2);
 
         topBar.PointerPressed += (_, e) =>
         {
-            if (ReferenceEquals(e.Source, topBar) || ReferenceEquals(e.Source, topBarGrid))
+            if ((ReferenceEquals(e.Source, topBar) || ReferenceEquals(e.Source, topBarGrid)) &&
+                e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             {
-                BeginMoveFromPointer(topBar, e);
+                BeginMoveDrag(e);
+                e.Handled = true;
             }
         };
-
         topBar.Child = topBarGrid;
         shell.Children.Add(topBar);
 
@@ -171,7 +201,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
 
         _paperChrome.Child = shell;
         root.Children.Add(_paperChrome);
-
         AddResizeHandles(root);
         Content = root;
         ContextMenu = CreateContextMenu();
@@ -189,9 +218,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
     }
 
     public string PaperId { get; }
-
     public PaperData Paper { get; }
-
     Window IPaperSurface.Window => this;
 
     public event Action? Changed;
@@ -214,6 +241,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         Width = Math.Max(PaperLayoutDefaults.MinWidth, descriptor.Size.Width);
         Height = Math.Max(PaperLayoutDefaults.MinHeight, descriptor.Size.Height);
         Topmost = descriptor.AlwaysOnTop;
+        UpdatePinVisual();
 
         if (descriptor.IsVisible)
         {
@@ -227,8 +255,74 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
 
     public void RefreshFromModel()
     {
-        _title.Text = Paper.Title ?? string.Empty;
+        _titleText.Text = DisplayTitle();
+        if (!_titleEditBox.IsVisible)
+        {
+            _titleEditBox.Text = Paper.Title ?? string.Empty;
+        }
+        UpdatePinVisual();
         _editor.RefreshFromModel();
+    }
+
+    private string DisplayTitle() =>
+        string.IsNullOrWhiteSpace(Paper.Title)
+            ? (Paper.Type == PaperTypes.Todo ? "Todo" : "Note")
+            : Paper.Title;
+
+    private void TogglePin()
+    {
+        Paper.AlwaysOnTop = !Paper.AlwaysOnTop;
+        Topmost = Paper.AlwaysOnTop;
+        UpdatePinVisual();
+        Changed?.Invoke();
+    }
+
+    private void UpdatePinVisual()
+    {
+        _pinButton.Foreground = Paper.AlwaysOnTop
+            ? _palette.ActiveBrush
+            : _palette.WeakTextBrush;
+        _pinButton.Opacity = Paper.AlwaysOnTop ? 1 : 0.72;
+    }
+
+    private void BeginTitleEdit()
+    {
+        if (_titleEditBox.IsVisible)
+        {
+            return;
+        }
+
+        _titleBeforeEdit = Paper.Title ?? string.Empty;
+        _titleEditBox.Text = _titleBeforeEdit;
+        _titleText.IsVisible = false;
+        _titleEditBox.IsVisible = true;
+        _titleEditBox.Focus();
+        _titleEditBox.SelectAll();
+    }
+
+    private void EndTitleEdit(bool commit)
+    {
+        if (!_titleEditBox.IsVisible)
+        {
+            return;
+        }
+
+        var value = commit
+            ? PaperTitleRules.CleanCustomTitle(
+                _titleEditBox.Text,
+                PaperTitleRules.NormalizeMaxTitleLength(_state.MaxTitleLength))
+            : _titleBeforeEdit;
+        var changed = !string.Equals(Paper.Title, value, StringComparison.Ordinal);
+        Paper.Title = value;
+        _titleEditBox.Text = value;
+        _titleEditBox.IsVisible = false;
+        _titleText.Text = DisplayTitle();
+        _titleText.IsVisible = true;
+        Focus();
+        if (changed)
+        {
+            Changed?.Invoke();
+        }
     }
 
     private Button CreateTopBarButton(string glyph, string tooltip, Action action)
@@ -248,7 +342,10 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             VerticalContentAlignment = VerticalAlignment.Center
         };
         button.Click += (_, _) => action();
-        ToolTip.SetTip(button, tooltip);
+        if (_state.EnableToolTips)
+        {
+            ToolTip.SetTip(button, tooltip);
+        }
         return button;
     }
 
@@ -264,6 +361,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         {
             Paper.AlwaysOnTop = pin.IsChecked;
             Topmost = Paper.AlwaysOnTop;
+            UpdatePinVisual();
             Changed?.Invoke();
         };
 
@@ -273,10 +371,8 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             IsEnabled = _state.UseCapsuleMode && _state.UseDeepCapsuleMode
         };
         collapse.Click += (_, _) => CollapseRequested?.Invoke();
-
         var hide = new MenuItem { Header = TextCatalog.Current.HidePaper };
         hide.Click += (_, _) => CloseRequested?.Invoke();
-
         var delete = new MenuItem { Header = TextCatalog.Current.DeletePaper };
         delete.Click += (_, _) => DeleteRequested?.Invoke();
 
@@ -292,17 +388,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
                 delete
             }
         };
-    }
-
-    private void BeginMoveFromPointer(object? sender, PointerPressedEventArgs e)
-    {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            return;
-        }
-
-        BeginMoveDrag(e);
-        e.Handled = true;
     }
 
     private void AddResizeHandles(Grid root)
@@ -346,7 +431,6 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             {
                 return;
             }
-
             BeginResizeDrag(edge, e);
             e.Handled = true;
         };

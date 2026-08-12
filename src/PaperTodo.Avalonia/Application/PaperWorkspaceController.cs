@@ -4,6 +4,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using PaperTodo.Avalonia.Edge;
 using PaperTodo.Avalonia.Papers;
+using PaperTodo.Avalonia.Settings;
 using PaperTodo.PluginHost;
 
 namespace PaperTodo.Avalonia.Application;
@@ -18,6 +19,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
     private AvaloniaGlobalHotkeyController? _globalHotkeys;
     private PluginCatalogSnapshot? _pluginCatalog;
     private Screens? _observedScreens;
+    private SettingsWindow? _settingsWindow;
     private AppState? _state;
     private long _saveVersion;
     private bool _started;
@@ -67,10 +69,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         ArrangeEdgeCapsules(animate: false);
         _started = true;
         cancellationToken.ThrowIfCancellationRequested();
-        _globalHotkeys = AvaloniaGlobalHotkeyController.TryStart(
-            _stateStorePlatform.InfrastructureTopLevel,
-            _state,
-            command => CommandRequested?.Invoke(command));
+        RestartGlobalHotkeys();
     }
 
     public async ValueTask SaveWithoutStartingAsync(CancellationToken cancellationToken)
@@ -190,6 +189,69 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         return ValueTask.CompletedTask;
     }
 
+    public void ShowSettings()
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        if (_disposed || !_started || _state is null)
+        {
+            return;
+        }
+
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Show();
+            _settingsWindow.Activate();
+            return;
+        }
+
+        var settings = new SettingsWindow(_state, ApplySettings);
+        _settingsWindow = settings;
+        settings.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_settingsWindow, settings))
+            {
+                _settingsWindow = null;
+            }
+        };
+        settings.Show();
+        settings.Activate();
+    }
+
+    private void ApplySettings()
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
+
+        RestartGlobalHotkeys();
+        _papers.CloseAll();
+        foreach (var paper in state.Papers)
+        {
+            if (!paper.IsCollapsed)
+            {
+                CreatePaperSurface(paper);
+            }
+        }
+
+        _edges.CloseAll();
+        ArrangeEdgeCapsules(animate: false);
+        SaveCurrentState();
+    }
+
+    private void RestartGlobalHotkeys()
+    {
+        _globalHotkeys?.Dispose();
+        _globalHotkeys = null;
+        if (_state is null)
+        {
+            return;
+        }
+
+        _globalHotkeys = AvaloniaGlobalHotkeyController.TryStart(
+            _stateStorePlatform.InfrastructureTopLevel,
+            _state,
+            command => CommandRequested?.Invoke(command));
+    }
+
     private void SetAllPaperVisibility(bool visible)
     {
         var state = _state ?? throw new InvalidOperationException("The state is not loaded.");
@@ -230,6 +292,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
     {
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
+        CloseSettings();
         DetachScreens();
         _saveTimer.Stop();
         _papers.CloseAll();
@@ -556,12 +619,25 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _saveTimer.Stop();
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
+        CloseSettings();
         _pluginCatalog = null;
         DetachScreens();
         CommandRequested = null;
         _papers.Dispose();
         _edges.Dispose();
         _stateStorePlatform.Dispose();
+    }
+
+    private void CloseSettings()
+    {
+        if (_settingsWindow is null)
+        {
+            return;
+        }
+
+        var settings = _settingsWindow;
+        _settingsWindow = null;
+        settings.Close();
     }
 
     private void DetachScreens()
