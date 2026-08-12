@@ -16,10 +16,13 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
     private readonly PaperSurfaceRegistry _papers;
     private readonly EdgeCapsuleQueueSurfaceRegistry _edges;
     private readonly DispatcherTimer _saveTimer;
+    private readonly DispatcherTimer _reminderTimer;
+    private readonly TodoReminderPolicyService _reminderPolicy = new();
     private AvaloniaGlobalHotkeyController? _globalHotkeys;
     private PluginCatalogSnapshot? _pluginCatalog;
     private Screens? _observedScreens;
     private SettingsWindow? _settingsWindow;
+    private ReminderToastWindow? _reminderToast;
     private AppState? _state;
     private long _saveVersion;
     private bool _started;
@@ -37,12 +40,16 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _stateStorePlatform = stateStorePlatform;
         _papers = papers;
         _edges = edges;
+
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _saveTimer.Tick += (_, _) =>
         {
             _saveTimer.Stop();
             SaveCurrentState();
         };
+
+        _reminderTimer = new DispatcherTimer();
+        _reminderTimer.Tick += OnReminderTimerTick;
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -70,6 +77,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _started = true;
         cancellationToken.ThrowIfCancellationRequested();
         RestartGlobalHotkeys();
+        RefreshReminderSchedule();
     }
 
     public async ValueTask SaveWithoutStartingAsync(CancellationToken cancellationToken)
@@ -235,6 +243,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _edges.CloseAll();
         ArrangeEdgeCapsules(animate: false);
         SaveCurrentState();
+        RefreshReminderSchedule();
     }
 
     private void RestartGlobalHotkeys()
@@ -292,6 +301,8 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
     {
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
+        _reminderTimer.Stop();
+        CloseReminderToast();
         CloseSettings();
         DetachScreens();
         _saveTimer.Stop();
@@ -327,6 +338,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         state.Papers.Add(paper);
         CreatePaperSurface(paper);
         SaveCurrentState();
+        RefreshReminderSchedule();
     }
 
     private PaperSurfaceWindow CreatePaperSurface(PaperData paper)
@@ -356,7 +368,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                 QueueSaveCurrentState();
             }
         };
-        surface.Changed += QueueSaveCurrentState;
+        surface.Changed += OnPaperChanged;
         surface.NewTodoRequested += () => CreatePaper(PaperTypes.Todo, visible: true);
         surface.NewNoteRequested += () => CreatePaper(PaperTypes.Note, visible: true);
         surface.CloseRequested += () =>
@@ -373,6 +385,12 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         surface.CollapseRequested += () => CollapsePaper(paper, surface);
         surface.DeleteRequested += () => DeletePaper(paper, surface);
         return surface;
+    }
+
+    private void OnPaperChanged()
+    {
+        QueueSaveCurrentState();
+        RefreshReminderSchedule();
     }
 
     private void HidePaper(PaperData paper, IPaperSurface surface)
@@ -406,6 +424,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         surface.Close();
         ArrangeEdgeCapsules(animate: true);
         SaveCurrentState();
+        RefreshReminderSchedule();
     }
 
     private void ExpandCollapsedPaper(PaperData paper)
@@ -540,6 +559,173 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         }
     }
 
+    private void OnReminderTimerTick(object? sender, EventArgs e)
+    {
+        if (!ReferenceEquals(sender, _reminderTimer))
+        {
+            return;
+        }
+
+        _reminderTimer.Stop();
+        ProcessDueReminders();
+    }
+
+    private void RefreshReminderSchedule()
+    {
+        _reminderTimer.Stop();
+        var state = _state;
+        if (!_started || _disposed || state is null)
+        {
+            return;
+        }
+
+        var evaluation = _reminderPolicy.Evaluate(state);
+        if (!evaluation.IsActive || evaluation.NextPoll is not { } nextPoll)
+        {
+            return;
+        }
+
+        _reminderTimer.Interval = nextPoll.Delay;
+        _reminderTimer.Start();
+    }
+
+    private void ProcessDueReminders()
+    {
+        var state = _state;
+        if (!_started || _disposed || state is null)
+        {
+            return;
+        }
+
+        var evaluation = _reminderPolicy.Evaluate(state);
+        if (evaluation.DueBatch.Count == 0)
+        {
+            RefreshReminderSchedule();
+            return;
+        }
+
+        var first = evaluation.DueBatch.Reminders[0];
+        var targetSucceeded = TryRevealReminderTarget(first);
+        var notificationSucceeded = TryShowReminderToast(evaluation.DueBatch);
+        var transaction = _reminderPolicy.PlanTriggerTransaction(
+            evaluation.DueBatch,
+            new TodoReminderSurfaceOutcome(targetSucceeded, notificationSucceeded));
+
+        if (transaction.Disposition == TodoReminderTriggerDisposition.Retry)
+        {
+            _reminderTimer.Interval = transaction.RetryAfter ?? TodoReminderPolicyService.DeliveryRetryInterval;
+            _reminderTimer.Start();
+            return;
+        }
+
+        if (TodoReminderPolicyService.ApplyTriggerTransaction(transaction))
+        {
+            foreach (var group in evaluation.DueBatch.Reminders.GroupBy(
+                         candidate => candidate.PaperId,
+                         StringComparer.Ordinal))
+            {
+                if (_papers.TryGet(group.Key, out var surface))
+                {
+                    surface.RefreshFromModel();
+                }
+            }
+
+            if (transaction.RequiresImmediateSave)
+            {
+                SaveCurrentState();
+            }
+        }
+
+        RefreshReminderSchedule();
+    }
+
+    private bool TryRevealReminderTarget(TodoReminderCandidate candidate)
+    {
+        try
+        {
+            var paper = candidate.Paper;
+            paper.IsVisible = true;
+            if (paper.IsCollapsed)
+            {
+                paper.IsCollapsed = false;
+            }
+
+            if (!_papers.TryGet(paper.Id, out var surface))
+            {
+                surface = CreatePaperSurface(paper);
+            }
+
+            surface.Show();
+            surface.RefreshFromModel();
+            surface.Window.Activate();
+            ArrangeEdgeCapsules(animate: true);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceError(
+                "PaperTodo Avalonia failed to reveal reminder target: {0}",
+                exception);
+            return false;
+        }
+    }
+
+    private bool TryShowReminderToast(TodoReminderDueBatch batch)
+    {
+        try
+        {
+            var state = _state;
+            if (state is null || batch.Count == 0)
+            {
+                return false;
+            }
+
+            CloseReminderToast();
+            var first = batch.Reminders[0];
+            var title = string.IsNullOrWhiteSpace(first.Paper.Title)
+                ? "Todo"
+                : first.Paper.Title;
+            var message = TodoReminderPolicyService.CompactText(
+                first.Item.Text,
+                "Todo");
+            var toast = new ReminderToastWindow(
+                state,
+                title,
+                message,
+                batch.Count,
+                () => TryRevealReminderTarget(first));
+            _reminderToast = toast;
+            toast.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_reminderToast, toast))
+                {
+                    _reminderToast = null;
+                }
+            };
+            toast.Show();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceError(
+                "PaperTodo Avalonia failed to show reminder toast: {0}",
+                exception);
+            return false;
+        }
+    }
+
+    private void CloseReminderToast()
+    {
+        if (_reminderToast is null)
+        {
+            return;
+        }
+
+        var toast = _reminderToast;
+        _reminderToast = null;
+        toast.Close();
+    }
+
     private void QueueSaveCurrentState()
     {
         if (_state is null || _disposed)
@@ -617,8 +803,10 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
 
         _disposed = true;
         _saveTimer.Stop();
+        _reminderTimer.Stop();
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
+        CloseReminderToast();
         CloseSettings();
         _pluginCatalog = null;
         DetachScreens();
