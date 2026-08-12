@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -39,7 +40,7 @@ internal sealed class MarkdownNoteControl : Grid
         _previewScroller = new ScrollViewer
         {
             Content = _preview,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
         _previewScroller.DoubleTapped += (_, e) =>
         {
@@ -120,6 +121,11 @@ internal sealed class MarkdownNoteControl : Grid
         {
             _previewScroller.IsVisible = false;
             _editor.IsVisible = true;
+        }
+        else if (!_editor.IsFocused)
+        {
+            _editor.IsVisible = false;
+            _previewScroller.IsVisible = true;
         }
     }
 
@@ -241,7 +247,7 @@ internal sealed class MarkdownNoteControl : Grid
         }
         if (trimmed.StartsWith("> ", StringComparison.Ordinal))
         {
-            var quote = new Border
+            _preview.Children.Add(new Border
             {
                 BorderBrush = _palette.ActiveBrush,
                 BorderThickness = new Thickness(2, 0, 0, 0),
@@ -254,8 +260,7 @@ internal sealed class MarkdownNoteControl : Grid
                     FontSize = BaseFontSize(),
                     TextWrapping = TextWrapping.Wrap
                 }
-            };
-            _preview.Children.Add(quote);
+            });
             return;
         }
 
@@ -264,7 +269,6 @@ internal sealed class MarkdownNoteControl : Grid
 
     private void AddCodeBlock(IReadOnlyCollection<string> lines)
     {
-        var text = string.Join(Environment.NewLine, lines);
         _preview.Children.Add(new Border
         {
             Background = _palette.HoverBrush,
@@ -275,7 +279,7 @@ internal sealed class MarkdownNoteControl : Grid
             Margin = new Thickness(0, 3),
             Child = new TextBlock
             {
-                Text = text,
+                Text = string.Join(Environment.NewLine, lines),
                 Foreground = _palette.TextBrush,
                 FontSize = Math.Max(11, BaseFontSize() - 1),
                 FontFamily = new FontFamily("Consolas"),
@@ -310,11 +314,8 @@ internal sealed class MarkdownNoteControl : Grid
         OverallFontScales.Normalize(_state.Zoom) *
         OverallFontScales.Normalize(_paper.TextZoom));
 
-    private static string StripSimpleInlineMarkers(string text)
-    {
-        return text
-            .Replace("**", string.Empty, StringComparison.Ordinal)
-            .Replace("__", string.Empty, StringComparison.Ordinal)
-            .Replace("`", string.Empty, StringComparison.Ordinal);
-    }
+    private static string StripSimpleInlineMarkers(string text) => text
+        .Replace("**", string.Empty, StringComparison.Ordinal)
+        .Replace("__", string.Empty, StringComparison.Ordinal)
+        .Replace("`", string.Empty, StringComparison.Ordinal);
 }
