@@ -142,7 +142,7 @@ internal sealed class ExternalMarkdownEditorSession : IDisposable
             return ".md";
         }
 
-        if (!extension.StartsWith('.', StringComparison.Ordinal))
+        if (!extension.StartsWith(".", StringComparison.Ordinal))
         {
             extension = "." + extension;
         }
