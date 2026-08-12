@@ -48,6 +48,7 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
 
         PointerMoved += OnPointerMoved;
         PointerPressed += OnPointerPressed;
+        PointerExited += OnPointerExited;
         Opened += OnOpened;
     }
 
@@ -127,8 +128,6 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
                 Key.Edge == EdgeCapsuleEdge.Left ? hostBounds.Left : hostBounds.Right);
         }
 
-        // Requested targets are allowed to grow the transparent motion envelope but never to
-        // shrink it. This keeps the HWND stable while composition nodes move within it.
         if (EdgeCapsuleMotionEnvelopePolicy.Contains(_hostBounds, hostBounds))
         {
             hostBounds = _hostBounds;
@@ -151,8 +150,6 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
             Position = new PixelPoint(hostBounds.Left, hostBounds.Top);
         }
 
-        // Frame geometry is expressed in physical device pixels. RenderScaling is not reliable
-        // before the first Show on a mixed-DPI desktop, so use the planner's monitor DPI.
         Width = hostBounds.Width / _dpiScaleX;
         Height = hostBounds.Height / _dpiScaleY;
         if (!IsVisible)
@@ -210,8 +207,6 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
             hasActiveAnimation |= node.AdvanceAnimation(nowTimestamp);
         }
 
-        // WM_NCHITTEST and hover consume the same sampled applied frames that describe the
-        // compositor's cubic transition, never the target frames ahead of the visible nodes.
         RebuildInteractiveBounds();
         if (hasActiveAnimation)
         {
@@ -251,11 +246,50 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
             visible.Max(bounds => bounds.Bottom));
     }
 
-    private void OnPointerMoved(object? sender, PointerEventArgs e) =>
+    private void OnPointerMoved(object? sender, PointerEventArgs e)
+    {
+        UpdatePointerHover(e);
         RaiseTransparentHitTest(e);
+    }
 
-    private void OnPointerPressed(object? sender, PointerPressedEventArgs e) =>
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        UpdatePointerHover(e);
         RaiseTransparentHitTest(e);
+    }
+
+    private void OnPointerExited(object? sender, PointerEventArgs e)
+    {
+        var animated = false;
+        foreach (var node in _nodes.Values)
+        {
+            animated |= node.UpdatePointerState(false, _hostBounds);
+        }
+        if (animated)
+        {
+            RequestSharedAnimationFrame();
+        }
+        RebuildInteractiveBounds();
+    }
+
+    private void UpdatePointerHover(PointerEventArgs e)
+    {
+        var devicePoint = global::Avalonia.VisualExtensions.PointToScreen(
+            this,
+            e.GetPosition(this));
+        var animated = false;
+        foreach (var node in _nodes.Values)
+        {
+            animated |= node.UpdatePointerState(
+                node.ContainsDevicePoint(devicePoint),
+                _hostBounds);
+        }
+        if (animated)
+        {
+            RequestSharedAnimationFrame();
+        }
+        RebuildInteractiveBounds();
+    }
 
     private void RaiseTransparentHitTest(PointerEventArgs e)
     {
@@ -322,6 +356,10 @@ internal sealed class EdgeCapsuleQueueSurface : Window, IEdgeCapsuleQueueSurface
     protected override void OnClosed(EventArgs e)
     {
         _animationFrameRequested = false;
+        PointerMoved -= OnPointerMoved;
+        PointerPressed -= OnPointerPressed;
+        PointerExited -= OnPointerExited;
+        Opened -= OnOpened;
         if (_wndProcHook is not null)
         {
             Win32Properties.RemoveWndProcHookCallback(this, _wndProcHook);

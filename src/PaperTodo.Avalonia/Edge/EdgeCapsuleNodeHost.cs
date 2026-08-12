@@ -18,6 +18,8 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
     private readonly EdgeCapsuleChrome? _chrome;
     private CompositionVisual? _visual;
     private EdgeCapsuleTransition? _transition;
+    private EdgeCapsulePresentationFrame _restingFrame = EdgeCapsulePresentationFrame.Hidden;
+    private EdgeCapsuleModel _pointerModel;
     private bool _disposed;
 
     public EdgeCapsuleNodeHost(string paperId, Control chrome)
@@ -35,6 +37,14 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
             IsVisible = false
         };
         _root.AttachedToVisualTree += OnAttachedToVisualTree;
+
+        var attached = EdgeCapsuleReducer.Reduce(
+            EdgeCapsuleModel.Initial,
+            EdgeCapsuleIntent.Attach(
+                new EdgeCapsulePlacement(0, 0, 1),
+                EdgeCapsulePaperForm.Collapsed,
+                retracted: false));
+        _pointerModel = attached.Accepted ? attached.Model : EdgeCapsuleModel.Initial;
     }
 
     public string PaperId { get; }
@@ -50,6 +60,68 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
         EdgeCapsuleMotion motion)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (motion.Reason != EdgeCapsuleTransitionReason.Pointer)
+        {
+            _restingFrame = frame;
+            var reset = EdgeCapsuleReducer.Reduce(
+                _pointerModel,
+                EdgeCapsuleIntent.PointerSampled(false));
+            if (reset.Accepted)
+            {
+                _pointerModel = reset.Model;
+            }
+        }
+
+        return ApplyCore(frame, queueHostBounds, motion);
+    }
+
+    /// <summary>
+    /// Drives the docked resting/hover presentation through the shared reducer. The visible shape
+    /// itself is derived from the authoritative applied resting frame so this adapter never owns a
+    /// second queue geometry model and never resizes the native queue HWND.
+    /// </summary>
+    public bool UpdatePointerState(bool overInteractiveSurface, DeviceScreenRect queueHostBounds)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_restingFrame.Visible || _restingFrame.Surface is not (
+                EdgeCapsuleSurfaceKind.DockedResting or
+                EdgeCapsuleSurfaceKind.DockedHovered))
+        {
+            return false;
+        }
+
+        var reduced = EdgeCapsuleReducer.Reduce(
+            _pointerModel,
+            EdgeCapsuleIntent.PointerSampled(overInteractiveSurface));
+        if (!reduced.Accepted)
+        {
+            return false;
+        }
+
+        var wasHovered = _pointerModel.State.Visual == EdgeCapsuleVisualState.Hovered;
+        var isHovered = reduced.Model.State.Visual == EdgeCapsuleVisualState.Hovered;
+        _pointerModel = reduced.Model;
+        if (wasHovered == isHovered)
+        {
+            return false;
+        }
+
+        var target = isHovered
+            ? CreateHoveredFrame(_restingFrame)
+            : _restingFrame;
+        return ApplyCore(
+            target,
+            queueHostBounds,
+            EdgeCapsuleMotion.Animate(
+                EdgeCapsuleTransitionReason.Pointer,
+                EdgeCapsuleLayout.HorizontalResizeMilliseconds));
+    }
+
+    private bool ApplyCore(
+        EdgeCapsulePresentationFrame frame,
+        DeviceScreenRect queueHostBounds,
+        EdgeCapsuleMotion motion)
+    {
         if (!frame.IsUsable)
         {
             throw new ArgumentException("The edge capsule presentation frame is not usable.", nameof(frame));
@@ -146,6 +218,45 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
         _visual.Size = targetSize;
         _visual.Opacity = (float)frame.Opacity;
         return false;
+    }
+
+    private static EdgeCapsulePresentationFrame CreateHoveredFrame(
+        EdgeCapsulePresentationFrame resting)
+    {
+        var closeWidthDevice = Math.Max(
+            0,
+            (int)Math.Round(resting.MaximumCloseWidthDip * Math.Max(1, resting.DpiScaleX)));
+        if (closeWidthDevice == 0)
+        {
+            return resting with { Surface = EdgeCapsuleSurfaceKind.DockedHovered };
+        }
+
+        var bounds = resting.Edge == EdgeCapsuleEdge.Left
+            ? new DeviceScreenRect(
+                resting.Bounds.Left,
+                resting.Bounds.Top,
+                resting.Bounds.Right + closeWidthDevice,
+                resting.Bounds.Bottom)
+            : new DeviceScreenRect(
+                resting.Bounds.Left - closeWidthDevice,
+                resting.Bounds.Top,
+                resting.Bounds.Right,
+                resting.Bounds.Bottom);
+        var interactive = EdgeCapsuleGeometry.InteractiveBoundsForAppliedBounds(
+            bounds,
+            resting.Edge,
+            resting.DpiScaleX,
+            resting.DpiScaleY,
+            EdgeCapsuleLayout.WindowChromeMargin);
+        return resting with
+        {
+            Surface = EdgeCapsuleSurfaceKind.DockedHovered,
+            Bounds = bounds,
+            InteractiveBounds = interactive,
+            ContentOpacity = 1,
+            IsHitTestVisible = true,
+            CloseSegmentActsAsContent = false
+        };
     }
 
     public bool AdvanceAnimation(long nowTimestamp)
