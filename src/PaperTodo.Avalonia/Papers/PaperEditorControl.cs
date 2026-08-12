@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using PaperTodo.Avalonia.Localization;
@@ -6,7 +7,6 @@ namespace PaperTodo.Avalonia.Papers;
 
 internal sealed class PaperEditorControl : Grid
 {
-    private readonly PaperData _paper;
     private readonly Control _body;
 
     public PaperEditorControl(
@@ -15,7 +15,6 @@ internal sealed class PaperEditorControl : Grid
         PaperThemePalette palette,
         Action changed)
     {
-        _paper = paper;
         Background = Brushes.Transparent;
 
         if (paper.Type == PaperTypes.Todo)
@@ -38,7 +37,7 @@ internal sealed class PaperEditorControl : Grid
                 Background = Brushes.Transparent,
                 BorderThickness = default,
                 IsReadOnly = true,
-                Padding = new Avalonia.Thickness(10, 8),
+                Padding = new Thickness(10, 8),
                 Foreground = palette.WeakTextBrush
             };
         }
