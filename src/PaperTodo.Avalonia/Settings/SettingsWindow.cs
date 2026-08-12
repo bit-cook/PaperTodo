@@ -18,6 +18,8 @@ internal sealed class SettingsWindow : Window
     private readonly CheckBox _toolTips;
     private readonly CheckBox _autoMoveCompleted;
     private readonly CheckBox _autoClearCompleted;
+    private readonly CheckBox _todoReminders;
+    private readonly Slider _quickReminderMinutes;
     private readonly CheckBox _showNewTodo;
     private readonly CheckBox _showNewNote;
     private readonly ComboBox _theme;
@@ -27,6 +29,7 @@ internal sealed class SettingsWindow : Window
     private readonly ComboBox _noteSize;
     private readonly ComboBox _titleSize;
     private readonly ComboBox _capsuleSize;
+    private readonly ComboBox _markdownMode;
     private readonly CheckBox _todoBold;
     private readonly CheckBox _noteBold;
     private readonly CheckBox _titleBold;
@@ -57,6 +60,11 @@ internal sealed class SettingsWindow : Window
         _toolTips = SettingCheck(text.ToolTips, state.EnableToolTips);
         _autoMoveCompleted = SettingCheck(text.AutoMoveCompleted, state.AutoMoveCompletedTodosToBottom);
         _autoClearCompleted = SettingCheck(text.AutoClearCompleted, state.AutoClearCompletedTodos);
+        _todoReminders = SettingCheck(text.TodoReminders, state.ExperimentalTodoReminders);
+        _quickReminderMinutes = SettingSlider(
+            ExperimentalTodoReminderOptions.MinimumQuickMinutes,
+            ExperimentalTodoReminderOptions.MaximumQuickMinutes,
+            ExperimentalTodoReminderOptions.NormalizeQuickMinutes(state.ExperimentalTodoReminderQuickMinutes));
         _showNewTodo = SettingCheck(text.TopBarNewTodo, state.ShowTopBarNewTodoButton);
         _showNewNote = SettingCheck(text.TopBarNewNote, state.ShowTopBarNewNoteButton);
 
@@ -67,6 +75,12 @@ internal sealed class SettingsWindow : Window
         _noteSize = SettingCombo([VisualTextSizes.Small, VisualTextSizes.Medium, VisualTextSizes.Large], VisualTextSizes.Normalize(state.NoteTextSize));
         _titleSize = SettingCombo([VisualTextSizes.Small, VisualTextSizes.Medium, VisualTextSizes.Large], VisualTextSizes.Normalize(state.TitleTextSize));
         _capsuleSize = SettingCombo([VisualTextSizes.Small, VisualTextSizes.Medium, VisualTextSizes.Large], VisualTextSizes.Normalize(state.CapsuleTextSize));
+        var normalizedMarkdownMode = MarkdownRenderModes.IsValid(state.MarkdownRenderMode)
+            ? state.MarkdownRenderMode
+            : MarkdownRenderModes.Basic;
+        _markdownMode = SettingCombo(
+            [MarkdownRenderModes.Off, MarkdownRenderModes.Basic, MarkdownRenderModes.Enhanced],
+            normalizedMarkdownMode);
         _todoBold = SettingCheck(text.Bold, state.TodoTextBold);
         _noteBold = SettingCheck(text.Bold, state.NoteTextBold);
         _titleBold = SettingCheck(text.Bold, state.TitleTextBold);
@@ -134,16 +148,19 @@ internal sealed class SettingsWindow : Window
 
     private Control BuildBehaviorTab()
     {
+        var text = TextCatalog.Current;
         var panel = SettingsPanel();
-        panel.Children.Add(Section(TextCatalog.Current.EdgeAndWindow));
+        panel.Children.Add(Section(text.EdgeAndWindow));
         panel.Children.Add(_capsuleMode);
         panel.Children.Add(_edgeCapsuleMode);
         panel.Children.Add(_animations);
         panel.Children.Add(_toolTips);
-        panel.Children.Add(Section(TextCatalog.Current.TodoBehavior));
+        panel.Children.Add(Section(text.TodoBehavior));
         panel.Children.Add(_autoMoveCompleted);
         panel.Children.Add(_autoClearCompleted);
-        panel.Children.Add(Section(TextCatalog.Current.TopBar));
+        panel.Children.Add(_todoReminders);
+        panel.Children.Add(Labeled(text.QuickReminderMinutes, _quickReminderMinutes));
+        panel.Children.Add(Section(text.TopBar));
         panel.Children.Add(_showNewTodo);
         panel.Children.Add(_showNewNote);
         return Scroller(panel);
@@ -162,6 +179,7 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(SizeBoldRow(text.NoteSize, _noteSize, _noteBold));
         panel.Children.Add(SizeBoldRow(text.TitleSize, _titleSize, _titleBold));
         panel.Children.Add(SizeBoldRow(text.CapsuleSize, _capsuleSize, _capsuleBold));
+        panel.Children.Add(Labeled(text.MarkdownMode, _markdownMode));
         panel.Children.Add(Section(text.WindowOpacity));
         panel.Children.Add(_inactiveOpacity);
         panel.Children.Add(Labeled(text.InactiveOpacityLevel, _inactiveOpacityValue));
@@ -252,6 +270,9 @@ internal sealed class SettingsWindow : Window
         _state.EnableToolTips = _toolTips.IsChecked == true;
         _state.AutoMoveCompletedTodosToBottom = _autoMoveCompleted.IsChecked == true;
         _state.AutoClearCompletedTodos = _autoClearCompleted.IsChecked == true;
+        _state.ExperimentalTodoReminders = _todoReminders.IsChecked == true;
+        _state.ExperimentalTodoReminderQuickMinutes = ExperimentalTodoReminderOptions.NormalizeQuickMinutes(
+            (int)Math.Round(_quickReminderMinutes.Value, MidpointRounding.AwayFromZero));
         _state.ShowTopBarNewTodoButton = _showNewTodo.IsChecked == true;
         _state.ShowTopBarNewNoteButton = _showNewNote.IsChecked == true;
         _state.Theme = (_theme.SelectedItem as string) ?? "system";
@@ -261,6 +282,9 @@ internal sealed class SettingsWindow : Window
         _state.NoteTextSize = VisualTextSizes.Normalize(_noteSize.SelectedItem as string);
         _state.TitleTextSize = VisualTextSizes.Normalize(_titleSize.SelectedItem as string);
         _state.CapsuleTextSize = VisualTextSizes.Normalize(_capsuleSize.SelectedItem as string);
+        _state.MarkdownRenderMode = MarkdownRenderModes.IsValid(_markdownMode.SelectedItem as string)
+            ? (string)_markdownMode.SelectedItem!
+            : MarkdownRenderModes.Basic;
         _state.TodoTextBold = _todoBold.IsChecked == true;
         _state.NoteTextBold = _noteBold.IsChecked == true;
         _state.TitleTextBold = _titleBold.IsChecked == true;
