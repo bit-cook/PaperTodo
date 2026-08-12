@@ -20,6 +20,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
     private readonly TextBox _titleEditBox;
     private readonly Button _pinButton;
     private readonly PaperEditorControl _editor;
+    private ExternalMarkdownEditorSession? _externalMarkdownSession;
     private string _titleBeforeEdit = string.Empty;
 
     public PaperSurfaceWindow(PaperSurfaceDescriptor descriptor)
@@ -31,7 +32,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         _palette = PaperThemePalette.Resolve(_state);
 
         WindowDecorations = global::Avalonia.Controls.WindowDecorations.None;
-        ShowInTaskbar = false;
+        ShowInTaskbar = !_state.HidePapersFromTaskbar;
         CanResize = true;
         Background = Brushes.Transparent;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
@@ -149,7 +150,10 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             BeginMoveDrag(e);
             e.Handled = true;
         };
-        ToolTip.SetTip(_titleHost, TextCatalog.Current.MovePaper);
+        if (_state.EnableToolTips)
+        {
+            ToolTip.SetTip(_titleHost, TextCatalog.Current.MovePaper);
+        }
         topBarGrid.Children.Add(_titleHost);
         Grid.SetColumn(_titleHost, 1);
 
@@ -172,6 +176,15 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
                 "+M",
                 TextCatalog.Current.NewNote,
                 () => NewNoteRequested?.Invoke()));
+        }
+        if (Paper.Type == PaperTypes.Note &&
+            PaperTextCodec.CanEditBody(Paper) &&
+            _state.ShowTopBarExternalOpenButton)
+        {
+            actions.Children.Add(CreateTopBarButton(
+                "↗",
+                TextCatalog.Current.OpenExternalEditor,
+                OpenExternalEditor));
         }
 
         var close = CreateTopBarButton(
@@ -325,6 +338,24 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         }
     }
 
+    private void OpenExternalEditor()
+    {
+        if (Paper.Type != PaperTypes.Note || !PaperTextCodec.CanEditBody(Paper))
+        {
+            return;
+        }
+
+        _externalMarkdownSession ??= new ExternalMarkdownEditorSession(
+            Paper,
+            _state.ExternalMarkdownExtension,
+            () =>
+            {
+                _editor.RefreshFromModel();
+                Changed?.Invoke();
+            });
+        _externalMarkdownSession.Open();
+    }
+
     private Button CreateTopBarButton(string glyph, string tooltip, Action action)
     {
         var button = new Button
@@ -376,18 +407,19 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         var delete = new MenuItem { Header = TextCatalog.Current.DeletePaper };
         delete.Click += (_, _) => DeleteRequested?.Invoke();
 
-        return new ContextMenu
+        var items = new List<object> { pin };
+        if (Paper.Type == PaperTypes.Note && PaperTextCodec.CanEditBody(Paper))
         {
-            ItemsSource = new object[]
-            {
-                pin,
-                new Separator(),
-                collapse,
-                hide,
-                new Separator(),
-                delete
-            }
-        };
+            var external = new MenuItem { Header = TextCatalog.Current.OpenExternalEditor };
+            external.Click += (_, _) => OpenExternalEditor();
+            items.Add(external);
+        }
+        items.Add(new Separator());
+        items.Add(collapse);
+        items.Add(hide);
+        items.Add(new Separator());
+        items.Add(delete);
+        return new ContextMenu { ItemsSource = items };
     }
 
     private void AddResizeHandles(Grid root)
@@ -435,5 +467,12 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
             e.Handled = true;
         };
         root.Children.Add(handle);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _externalMarkdownSession?.Dispose();
+        _externalMarkdownSession = null;
+        base.OnClosed(e);
     }
 }
