@@ -159,7 +159,7 @@ public sealed partial class AppController
             // A non-modifier key can still confirm; modifier-only recording completes on key-up.
             if (!ShortcutGesture.HasEdgePrefixModifiers(gesture.Modifiers) ||
                 ShortcutGesture.IsModifierKey(gesture.Key) ||
-                gesture.Key == Key.None)
+                gesture.Key == ShortcutKey.None)
             {
                 return false;
             }
@@ -188,7 +188,7 @@ public sealed partial class AppController
         return true;
     }
 
-    private void SetEdgeShortcutModifiersDraft(GlobalShortcutGroup group, ModifierKeys modifiers)
+    private void SetEdgeShortcutModifiersDraft(GlobalShortcutGroup group, ShortcutModifiers modifiers)
     {
         foreach (var definition in GlobalShortcutCatalog.DefinitionsInGroup(group))
         {
@@ -283,7 +283,7 @@ public sealed partial class AppController
             return;
         }
 
-        if (ShortcutGesture.IsModifierKey(key))
+        if (ShortcutGesture.IsModifierKey(WpfShortcutGesture.ConvertKey(key)))
         {
             return;
         }
@@ -294,7 +294,7 @@ public sealed partial class AppController
             return;
         }
 
-        var gesture = new ShortcutGesture(key, modifiers);
+        var gesture = WpfShortcutGesture.Create(key, modifiers);
         if (!TrySetRecordedShortcutDraft(commandId, gesture))
         {
             return;
@@ -329,7 +329,9 @@ public sealed partial class AppController
 
         e.Handled = true;
         var modifiers = Keyboard.Modifiers | releasedModifier;
-        var gesture = ShortcutGesture.ForEdgeOrdinal(modifiers, definition.EdgeOrdinal);
+        var gesture = ShortcutGesture.ForEdgeOrdinal(
+            WpfShortcutGesture.ConvertModifiers(modifiers),
+            definition.EdgeOrdinal);
         if (!TrySetRecordedShortcutDraft(commandId, gesture))
         {
             return;
@@ -936,7 +938,7 @@ public sealed partial class AppController
 
     private static string DisplayShortcut(string binding)
     {
-        return ShortcutGesture.TryParse(binding, out var gesture) && gesture.Key != Key.None
+        return ShortcutGesture.TryParse(binding, out var gesture) && gesture.Key != ShortcutKey.None
             ? gesture.ToDisplayString()
             : Strings.Get("ShortcutUnassigned");
     }
@@ -1326,7 +1328,8 @@ public sealed partial class AppController
             ? DeepCapsuleSides.Right
             : DeepCapsuleSides.Left;
         var queuePlan = EdgeCapsuleQueueCoordinator.Build(
-            papers.Select(paper => new EdgeCapsuleQueueMember(paper, QueueKey(paper))),
+            papers.Select(paper =>
+                new EdgeCapsuleQueueMember(paper.Id, QueueKey(paper))),
             State.UseCapsuleCollapseAll);
         var queuesByKey = queuePlan.Queues.ToDictionary(queue => queue.Key, StringComparer.Ordinal);
 
@@ -1340,8 +1343,8 @@ public sealed partial class AppController
                     continue;
                 }
 
-                var target = queue.Papers[ordinal - 1];
-                if (_windows.TryGetValue(target.Id, out var window))
+                var targetId = queue.Papers[ordinal - 1].Id;
+                if (_windows.TryGetValue(targetId, out var window))
                 {
                     window.ActivateFromEdgeShortcut();
                 }

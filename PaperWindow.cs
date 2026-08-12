@@ -171,12 +171,18 @@ public sealed partial class PaperWindow : Window
     private const double CapsuleNormalCloseWidth = 21;
     private const double CapsuleRightPadding = 6;
     private double CapsuleIconFontSize => AppTypography.Scale(13);
-    private double CapsuleLabelFontSize => VisualTextSizes.FontSize(12, _controller.State.CapsuleTextSize);
+    private double CapsuleLabelFontSize => VisualTextSizes.FontSize(
+        12,
+        _controller.State.CapsuleTextSize,
+        AppTypography.ScaleFactor);
     private FontFamily CapsuleLabelFontFamily =>
         AppTypography.FontFamilyFor(content: false, bold: _controller.State.CapsuleTextBold);
     private FontWeight CapsuleLabelFontWeight =>
         AppTypography.FontWeightFor(_controller.State.CapsuleTextBold);
-    private double TitleFontSize => VisualTextSizes.FontSize(12, _controller.State.TitleTextSize);
+    private double TitleFontSize => VisualTextSizes.FontSize(
+        12,
+        _controller.State.TitleTextSize,
+        AppTypography.ScaleFactor);
     private FontFamily TitleFontFamily =>
         AppTypography.FontFamilyForTitle(_controller.State.TitleTextBold);
     private FontWeight TitleFontWeight =>
@@ -1959,8 +1965,7 @@ public sealed partial class PaperWindow : Window
             startScreenPosition =
                 WindowNative.TryGetCursorScreenPosition(out var cursor)
                     ? cursor
-                    : DeviceScreenPoint.FromPoint(
-                        PointToScreen(startPosition));
+                    : PointToScreen(startPosition).ToDeviceScreenPoint();
         }
         _titleBarDragSession = new TitleBarDragSession(
             dragSource,
@@ -2442,7 +2447,7 @@ public sealed partial class PaperWindow : Window
                 Moved = (_, point) =>
                     _controller.UpdatePaperLinkDrag(
                         _paper,
-                        point.ToPoint()),
+                        point.ToWpfPoint()),
                 Completed = commit =>
                     _controller.EndPaperLinkDrag(_paper, commit),
                 GhostPlacement = TopBarDragGhostPlacement.Centered,

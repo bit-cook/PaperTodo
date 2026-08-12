@@ -1,6 +1,6 @@
 # PaperTodo Agent 备忘
 
-本文件只记录“不通读历史和全量代码很难知道”的项目约束。代码是真相；普通文件职责、字段含义、WPF/C# 常识不要写进来。
+本文件只记录“不通读历史和全量代码很难知道”的项目约束。代码是真相；普通文件职责、字段含义、UI 框架 / C# 常识不要写进来。
 
 ## 工作方式
 
@@ -23,7 +23,7 @@ Markdown 只做轻量显示和编辑辅助。可兼容少量单行内联 HTML �
 - 启动失败时不能用空状态覆盖旧文件。严格解析失败的数据不要“修好后覆盖”，否则可能破坏可恢复数据。
 - 保留 `_saveVersion`、`StateStore` 写锁和退出同步保存，避免旧异步保存覆盖新状态。
 - 删除、隐藏、折叠是三种语义：删除才从 `Papers` 移除；隐藏仍保留纸片；折叠仍是可见纸片，只是胶囊形态。
-- `paper.X/Y/Width/Height` 是普通纸片几何。胶囊尺寸和独立贴边 HWND 的坐标不能写回普通几何。
+- `paper.X/Y/Width/Height` 是普通纸片几何。胶囊尺寸和队列合成面的坐标不能写回普通几何。
 - 外部打开笔记的临时文件后缀只做文件名合法性校验；允许用户选择系统已关联的任意后缀。
 
 ## 单实例
@@ -34,7 +34,7 @@ Markdown 只做轻量显示和编辑辅助。可兼容少量单行内联 HTML �
 
 ## 托盘
 
-Hardcodet 托盘必须走 `TaskbarIcon.IconSource = LoadTrayIconSource()`。不要改回 `System.Drawing.Icon`；这个回归曾导致首次右键菜单位置错误、首次点击纸片被吞。
+迁移期旧 WPF 托盘必须走 `TaskbarIcon.IconSource = LoadTrayIconSource()`；Avalonia 产品使用自己的 `TrayIcon`，不得把 Hardcodet 或 Windows Forms 带入新可执行程序。外部图标解析和菜单命令仍只能有一份应用层实现。
 
 外部 `PaperTodo.ico` 是用户自定义入口，优先级高于内嵌图标。托盘菜单打开时重建，别用手动弹菜单、预热菜单、全局鼠标轮询等方式修首次菜单问题。
 
@@ -44,30 +44,31 @@ Hardcodet 托盘必须走 `TaskbarIcon.IconSource = LoadTrayIconSource()`。不�
 
 - 普通胶囊和贴边胶囊共用度量来源：`PaperLayoutDefaults` / `EdgeCapsuleLayout`。
 - 应用清单固定为 `PerMonitorV2,PerMonitor`；贴边 HWND 的物理像素几何以目标显示器和已创建宿主的实际 DPI 为准，不得回退到主纸片窗口的 DPI。
-- 贴边槽位不再由 `DeepCapsuleSlotWindow.cs` 或零散 `PaperWindow` 字段维护；`EdgeCapsuleHost` 独占 docked HWND 和视觉树，floating drag 继续使用独立 HWND。
+- 贴边槽位不再由 `DeepCapsuleSlotWindow.cs` 或零散窗口字段维护；Avalonia 中每个 `(monitor, edge)` 的 `EdgeCapsuleQueueSurface` 独占一个 docked HWND，每张纸的 `EdgeCapsuleHost` 只独占该 Surface 内的 Composition node，floating drag 继续使用独立 HWND。迁移期 WPF 的 per-paper host 只是旧行为基线，不得复制进新实现。
 - 所有贴边输入先变成带强类型参数的语义 `EdgeCapsuleIntent`，再经过 `EdgeCapsuleReducer`；不得重新引入 `SetSlot` / `SetVisual` / `SetPlacement` 这类字段 setter、通用参数袋或在 `PaperWindow` 另写布尔状态机。
-- 每张纸的 desired model、target presentation、transition、applied frame 和延迟工作只能由一个 `EdgeCapsulePresenter` 持有；`PaperWindow` 只提供环境快照和一个 `EdgeCapsuleHost.Apply(frame)` 效果入口，不得再增加并行真相。
+- 每张纸的 desired model、target presentation、transition、applied frame 和延迟工作只能由一个 `EdgeCapsulePresenter` 持有；UI 窗口只提供环境快照和一个 `EdgeCapsuleHost.Apply(frame)` 效果入口，不得再增加并行真相。
 - `EdgeCapsuleTargetPlanner` 必须一次产出完整 shape plan；`Docked*` 和 `FloatingFree` 是互斥外形，悬浮拖拽窗口只能消费 planner 的 `FloatingFree`，不得由构造参数临时拼关闭区、圆角或宽度。
 - 显示器、边、顶部、内容宽度和关闭宽度到 `DeviceScreenRect` 的转换只走纯 `EdgeCapsuleGeometry`；不得在窗口移动、动画或 measure 回调中复制物理像素公式。
 - per-window 的显示器 settle、标题 measure、物理指针采样和 frame apply 共用一个 dirty/reconcile 调度入口；需要同步交接时调用同一管线的 `Flush`，不得直接调用 planner/apply，也不得为新条件增加独立 pending/scheduled 布尔对。跨胶囊 arrange 只由队列协调器单独合并。
-- 同一 Dispatcher 上的动画 Presenter 必须共用一个帧调度器和每帧一次的物理指针采样；布局快照只在标题、显示器或队列布局失效时重算。普通纵向补位帧只能在稳定 `HostBounds` 内移动 `VisualSurface`，visible-width-only 帧只更新 `VisualSurface` 与固定分段，二者都不得逐帧提交 HWND 几何或触发 WPF `UpdateLayout`。
-- 指针是否位于胶囊上只根据 applied frame 的物理 `InteractiveBounds` 判断；该矩形排除透明阴影边距，WPF enter/leave 只负责唤醒采样，不能直接写 Hover。
+- 同一 UI Dispatcher 上的动画 Presenter 必须共用一个渲染帧源和每帧一次的物理指针采样；布局快照只在标题、显示器或队列布局失效时重算。普通纵向补位帧只能在稳定 `HostBounds` 内移动 Composition node，visible-width-only 帧只更新 node 的 Offset / Size / Opacity 与固定分段，二者都不得逐帧提交 HWND 几何或触发 Measure / Arrange。
+- 指针是否位于胶囊上只根据 applied frame 的物理 `InteractiveBounds` 判断；该矩形排除透明阴影边距，框架的 enter/leave 只负责唤醒采样，不能直接写 Hover。
 - 边缘预览展开后，当前卡片与其他可浏览胶囊的 applied `InteractiveBounds` 是真实选择区；每段连续可交互队列项的外接矩形是临时空白转移区，但不是胶囊命中区，固定透明 `HostBounds` 也不得混入。不可交互或正在收回的旧卡必须切断前后矩形。指针在空白转移区内时，开启移动意图只在轨迹明确朝向某个可浏览胶囊时保活，否则按五档分别约 0.2 / 0.35 / 0.5 / 0.65 / 0.8 秒收起；关闭移动意图时固定等待 1 秒。越出该外接矩形在两种模式下都必须无条件立即收起，预测没有否决权；指针捕获期间不得触发。
 - 每个队列的 index、master offset 和 slot count 只由 `EdgeCapsuleQueueCoordinator` 生成，`AppController` 和单个窗口不得各自重新推导。
 - **贴边胶囊队列永远不分页。** 不得按工作区高度做安全容量、隐藏溢出胶囊、页头、页码、自动翻页或容量截断；队列始终按完整顺序连续向下排列，超过当前显示器工作区就允许直接出屏。后续不要以“防重叠”“小屏适配”或任何其他名义重新引入分页。
-- 贴边 slot host 使用固定的最大展开透明合成面，真正可见的 Chrome / Shell 使用当前帧真实宽度并在该合成面内钉住墙边；透明预留区不是胶囊的一部分，外形不得依赖 `ClipToBounds`、屏幕边缘或超宽子元素裁切。slot 0 主胶囊不参与水平伸缩，继续使用自身真实窗口宽度。
+- 贴边队列 Surface 使用稳定的最大展开透明合成面，真正可见的 Chrome / Shell 使用当前帧真实宽度并在该合成面内钉住墙边；透明预留区不是胶囊的一部分，外形不得依赖队列窗口边界、屏幕边缘或超宽子元素裁切。Composition node 可以按当前真实 Size 自身裁剪。slot 0 主胶囊不参与水平伸缩。
 - 贴边胶囊的关闭区位于屏幕墙边、悬停时从 0 宽度展开并把图标/标题推向屏幕内部；靠墙侧始终为直角，内容区拥有朝屏幕内部的圆角。
-- 贴边胶囊水平伸缩只插值已经取整的可见物理宽度；水平伸缩动画期间不得水平移动或改变 docked HWND 宽度，垂直重排也必须在固定宿主内通过内部位移完成。关闭区宽度和透明度必须从该可见宽度反推，不得建立独立的布局插值通道。
-- `EdgeCapsuleHost.Apply(frame)` 是 docked HWND 的唯一呈现契约；`HostBounds` 只表示当前显示器与边上的稳定透明运动包络，覆盖工作区、队列槽位和一次最大预览补位，`Bounds` 才是当前真实胶囊。已分配包络在宿主可见期间可以保留更大的旧范围，不得因目标缩小而收缩；正文段与关闭段必须使用明确固定宽度，且两段之和与当前可见宽度一致，禁止用 `Star`、隐藏列或额外动画吸收差值。
+- 贴边胶囊水平伸缩只插值已经取整的可见物理宽度；水平伸缩动画期间不得移动或改变 docked QueueSurface HWND 几何，垂直重排也必须在固定宿主内通过 Composition Offset 完成。关闭区宽度和透明度必须从该可见宽度反推，不得建立独立的布局插值通道。
+- `EdgeCapsuleHost.Apply(frame)` 是每纸 Composition node 的唯一呈现契约；队列 Surface 汇总各节点的 `HostBounds`，维护稳定且只增不缩的透明运动包络，`Bounds` 才是当前真实胶囊。正文段与关闭段必须使用明确固定宽度，且两段之和与当前可见宽度一致，禁止用 `Star`、隐藏列或额外动画吸收差值。
 - 固定宿主超出 `InteractiveBounds` 的透明区域必须在 `WM_NCHITTEST` 返回 `HTTRANSPARENT`，不得把最大宿主矩形当成悬停或点击区域。
-- 跨队列拖拽使用独立的 floating drag HWND；贴边 slot host 永远只保留贴边布局，禁止把它改造成自由胶囊或在两种外形间复用列顺序、圆角和宽度状态。
+- 跨队列拖拽使用独立的 floating drag HWND；贴边 QueueSurface 中的 node 永远只保留贴边布局，禁止把它改造成自由胶囊或在两种外形间复用列顺序、圆角和宽度状态。
 - 拖动期间收到的全局 `ArrangeDeepCapsules` 请求必须合并并在拖动结束后刷新，不能静默丢弃；显示器指标刷新可用自己的延迟刷新吞并该请求。
 - 标题测量刷新只改变 target 的真实内容宽度，不得重新推导 Hover / Active、关闭区或槽位语义；它不能覆盖已经排队的动画，动画中从当前 applied frame 平滑 retarget，拖动中则延迟到会话结束。
 - 插件标准胶囊使用 `PaperCapsulePresentation.AutomaticWidth` 时，由宿主统一按标准组件、组件间距和模板内边距测量真实内容宽度；正数固定宽度继续原样支持。插件不得各自复制字符数估宽逻辑。
-- 协议 1.8 边缘迷你内容固定按“专属迷你界面 → 明确允许的纯 WPF 正文迁移 → 1.7 自绘胶囊实时镜像 → 1.6 标准组件放大重绘 → 纯文字”降级；所有插件仍必须保留 1.6 结构化胶囊和 `plainText`。原生专属迷你界面、正文迁移和 1.7 自绘胶囊都拒绝 `Window`、`HwndHost`、WindowsFormsHost、WebView2 和已挂载控件。
+- Native AOT 版本不得运行时加载 managed 插件程序集。官方原生能力必须编译期显式注册；第三方运行时 UI 暂只保留 Web 插件。遇到旧 WPF provider 时保留 provider ID、正文状态和 `plugins/data`，显示不兼容回退并允许用户主动切换，绝不能静默改成 Markdown 或清空数据。未来第三方原生边界只能是独立进程与声明式 / 宿主渲染协议。
+- 协议 1.8 边缘迷你内容固定按“专属迷你界面 → 明确允许的内置 Avalonia 正文视图 → 自绘胶囊实时镜像 → 标准组件放大重绘 → 纯文字”降级；所有插件仍必须保留结构化胶囊和 `plainText`。专属迷你界面和正文迁移都拒绝独立原生子窗口、Windows Forms、原生 WebView 子句柄和已挂载控件。
 - 1.8 迷你卡片尺寸包含宿主外框和关闭区，协议范围为 120×90～480×420 DIP；空待办和空笔记默认 130×120 DIP。一次浏览会话冻结尺寸，状态刷新不得改变整列布局。
 - Web 插件的 `miniEntry` 必须位于正文 `entry` 的本地静态目录内；宿主先显示 1.6 放大回退，只有迷你页显式 `mini.ready()` 且再过一个渲染帧后才能替换，失败时不得清空回退。正文和迷你页共享宿主管理的状态、设置和主题，禁止各自维护会互相覆盖的权威副本。
-- 纯 WPF 正文迁移只在插件显式实现能力时启用：首次未展示正文可暂时移动唯一真实 View；移回正文前必须先以内存截图接棒。之后浏览先显示旧截图、每次只刷新一次；截图任务必须防止旧结果覆盖新会话，禁止持续采样。
+- 内置 Avalonia 正文迁移只在 provider 显式实现能力时启用：首次未展示正文可暂时移动唯一真实 View；移回正文前必须先以内存截图接棒。之后浏览先显示旧截图、每次只刷新一次；截图任务必须防止旧结果覆盖新会话，禁止持续采样。
 - 折叠胶囊、贴边胶囊、展开后的边缘激发态应复用同一套胶囊 UI。激发态只是持久外移、外描边和状态变化，不应再重绘一套 UI。
 - `ShowDeepCapsuleWhileExpanded = true`：从贴边胶囊展开纸片后，边缘胶囊仍显示并占槽位。
 - `UseCapsuleCollapseAll` 使用 slot 0 的主胶囊；真实纸片槽位从后面开始。`CapsuleCollapseAllActive` 为真时，真实胶囊收向主胶囊并隐藏可点击面。
@@ -80,13 +81,13 @@ Hardcodet 托盘必须走 `TaskbarIcon.IconSource = LoadTrayIconSource()`。不�
 - 多行粘贴待办只能形成一次撤销快照。
 - `PaperItem.LinkedPaperId` 会影响删除纸片、关闭关联功能、显示关联纸片名称、以及“已关联纸片不显示为胶囊”。
 - 笔记编辑态和浏览态共用同一个 `MarkdownTextBox`。不要拆成两套文本控件，否则滚动、换行、选区和测量容易漂。
-- `MarkdownTextBox` 长度上限是 WPF 布局 / 渲染保护，不要直接删除。
+- Markdown 编辑器长度上限是布局 / 渲染保护，迁移到 AvaloniaEdit 后也不能直接删除。
 
 ## 主题、资源、提示
 
 用户可见文本同步四个资源文件：中文、英文、日文、韩文。`ResourceTextVersion` 只是人工检查标记，不参与运行时逻辑。
 
-主题变化要主动刷新动态生成控件、托盘菜单、AvalonEdit 背景 / 文本 / 光标 / 覆盖层；不要只依赖动态资源。
+主题变化要主动刷新动态生成控件、托盘菜单、AvaloniaEdit 背景 / 文本 / 光标 / 覆盖层；不要只依赖动态资源。
 
 `EnableToolTips` 只控制普通操作提示，不应关闭设置页说明图标和扩展说明。
 
@@ -124,9 +125,9 @@ dotnet build PaperTodo.csproj -c Release
 
 `vendor/wpf-notifyicon` 使用父仓库记录的固定子模块提交。更新 fork 后，必须显式更新子模块 gitlink、完成构建与真实托盘手测，再将新的依赖提交一并提交到 PaperTodo。普通本地构建和云端 Release 不得在构建过程中自动拉取 fork 的最新分支。
 
-云端 Release 发布两个 Windows x64 单文件：自包含 .NET Runtime 的 `…-self-contained.exe`，以及不带运行库的 `…-no-runtime.exe`。本地打包只生成 no-runtime 单文件。WPF 版本不要开启 `PublishTrimmed` 或 Native AOT。
+迁移期 WPF 发布规则保持原样且不得开启 Trim / Native AOT。Avalonia 正式发布只生成一个 Windows x64 Native AOT 自包含应用可执行文件；标准 Skia / ANGLE 渲染栈的原生运行库仍可作为明确白名单载荷随程序发布，不得把“一个应用 exe”误写成“发布目录只有一个物理文件”。应用项目必须保持 `PublishAot`、Trim / AOT / SingleFile 分析器、source-generated JSON、`CETCompat=false`，不得用全程序集 Trimmer root 掩盖应用警告。
 
-仓库内 `native/lmdb/bin/win-x64/papertodo_lmdb.dll` 是本地没有 CMake / MSVC 环境时使用的默认原生库，普通 `dotnet build` / `dotnet publish` 必须复制或嵌入它，并在缺失时直接失败。GitHub Release 必须先调用 `native/lmdb/build.ps1 -ForceRebuild` 从仓库内 LMDB 源码重新生成 DLL，不能直接拿默认 DLL 冒充云端编译产物。
+仓库内 `native/lmdb/bin/win-x64/papertodo_lmdb.dll` 是迁移期本地构建的默认原生库，缺失时必须直接失败。GitHub Release 必须从仓库内 LMDB 源码重建；Native AOT 发布使用 `/MT` 静态 archive 并通过 Direct P/Invoke 链入主程序，不得在 AOT 发布目录夹带 `papertodo_lmdb.dll`。
 
 稳定正式版不要靠 tag push 自动发布；完成真实多屏 / 混合 DPI 等发布前手测后，用 GitHub Actions `workflow_dispatch` 并显式确认稳定版发布。`rc` / `alpha` / `beta` / `preview` 标签可以继续由 tag push 发布为预发布。
 

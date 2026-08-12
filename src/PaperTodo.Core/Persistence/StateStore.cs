@@ -2,25 +2,34 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace PaperTodo;
 
 public sealed class StateStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerOptions.Strict)
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-        // Tolerate unknown properties so configs written by older / experimental builds (e.g.
-        // retired deepCapsuleDock* fields) still load instead of crashing on startup. The Strict
-        // preset otherwise sets Disallow, which makes any removed/renamed field fatal.
-        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Skip
-    };
+    private static readonly PaperTodoStateJsonContext JsonContext = CreateJsonContext();
+    private readonly IStateStorePlatform _platform;
+    private readonly string _loadFailureMessage;
 
-    public string FilePath { get; } = Path.Combine(AppContext.BaseDirectory, "data.json");
-    public string BackupPath { get; } = Path.Combine(AppContext.BaseDirectory, "data.backup.json");
+    public StateStore(
+        IStateStorePlatform? platform = null,
+        string? baseDirectory = null,
+        string? loadFailureMessage = null)
+    {
+        _platform = platform ?? StateStorePlatformDefaults.Instance;
+        var dataDirectory = string.IsNullOrWhiteSpace(baseDirectory)
+            ? AppContext.BaseDirectory
+            : Path.GetFullPath(baseDirectory);
+        FilePath = Path.Combine(dataDirectory, "data.json");
+        BackupPath = Path.Combine(dataDirectory, "data.backup.json");
+        _loadFailureMessage = string.IsNullOrWhiteSpace(loadFailureMessage)
+            ? "PaperTodo could not load its saved data."
+            : loadFailureMessage;
+    }
+
+    public string FilePath { get; }
+    public string BackupPath { get; }
     private bool _preserveRecoveredLoadFilesOnNextSave;
     private string? _preservedFailedPrimaryPath;
     private string? _preservedRecoveryBackupPath;
@@ -43,7 +52,7 @@ public sealed class StateStore
             try
             {
                 var json = File.ReadAllText(FilePath);
-                var state = JsonSerializer.Deserialize<AppState>(json, JsonOptions);
+                var state = JsonSerializer.Deserialize(json, JsonContext.AppState);
                 if (state != null)
                 {
                     NormalizeAfterLoad(state);
@@ -64,7 +73,7 @@ public sealed class StateStore
             try
             {
                 var json = File.ReadAllText(BackupPath);
-                var state = JsonSerializer.Deserialize<AppState>(json, JsonOptions);
+                var state = JsonSerializer.Deserialize(json, JsonContext.AppState);
                 if (state != null)
                 {
                     if (mainExists)
@@ -85,9 +94,7 @@ public sealed class StateStore
         }
 
         var innerEx = mainEx ?? backupEx;
-        throw new InvalidOperationException(
-            Strings.Get("StateLoadFailed"),
-            innerEx);
+        throw new InvalidOperationException(_loadFailureMessage, innerEx);
     }
 
     internal bool TryCollectProtectedImageIds(
@@ -136,7 +143,7 @@ public sealed class StateStore
             foreach (var path in paths)
             {
                 var json = File.ReadAllText(path);
-                var snapshot = JsonSerializer.Deserialize<AppState>(json, JsonOptions);
+                var snapshot = JsonSerializer.Deserialize(json, JsonContext.AppState);
                 if (snapshot == null || !TryAddImageReferences(snapshot, protectedImageIds))
                 {
                     protectedImageIds.Clear();
@@ -215,7 +222,28 @@ public sealed class StateStore
     public string SerializeState(AppState state)
     {
         PrepareForSave(state);
-        return JsonSerializer.Serialize(state, JsonOptions);
+        return JsonSerializer.Serialize(state, JsonContext.AppState);
+    }
+
+    private static PaperTodoStateJsonContext CreateJsonContext()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Strict)
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+            // Historical data may contain explicit nulls for collection/string properties. They
+            // must reach NormalizeAfterLoad, whose in-place repair policy predates the .NET 10
+            // Strict preset's nullable enforcement.
+            RespectNullableAnnotations = false,
+            RespectRequiredConstructorParameters = true,
+            // Tolerate unknown properties so configs written by older / experimental builds (e.g.
+            // retired deepCapsuleDock* fields) still load instead of crashing on startup. The
+            // Strict preset otherwise sets Disallow, which makes removed fields fatal.
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip
+        };
+        return new PaperTodoStateJsonContext(options);
     }
 
     public void SaveJsonSync(string json, long version)
@@ -428,7 +456,7 @@ public sealed class StateStore
         }
     }
 
-    private static void NormalizeAfterLoad(AppState state)
+    private void NormalizeAfterLoad(AppState state)
     {
         if (state.Papers == null)
         {
@@ -442,7 +470,7 @@ public sealed class StateStore
         NormalizeLinks(state);
     }
 
-    private static void NormalizeGlobalState(AppState state)
+    private void NormalizeGlobalState(AppState state)
     {
         if (state.Theme is not ("system" or "light" or "dark"))
         {
@@ -461,7 +489,8 @@ public sealed class StateStore
         state.ResizeGripMode = ResizeGripModes.Normalize(state.ResizeGripMode);
         state.DeepCapsuleSide = DeepCapsuleSides.Normalize(state.DeepCapsuleSide);
         state.DeepCapsuleGapSize = DeepCapsuleGapSizes.Normalize(state.DeepCapsuleGapSize);
-        state.DeepCapsuleMonitorDeviceName = WindowWorkAreaHelper.NormalizeQueueMonitorDeviceName(state.DeepCapsuleMonitorDeviceName);
+        state.DeepCapsuleMonitorDeviceName = _platform.NormalizeMonitorDeviceName(
+            state.DeepCapsuleMonitorDeviceName);
         state.TodoVisualSize = TodoVisualSizes.Normalize(state.TodoVisualSize);
         state.NoteTextSize = VisualTextSizes.Normalize(state.NoteTextSize);
         state.TitleTextSize = VisualTextSizes.Normalize(state.TitleTextSize);
@@ -515,10 +544,15 @@ public sealed class StateStore
             state.UseDeepCapsuleMode = false;
         }
 
-        state.MaxTitleLength = PaperTitles.NormalizeMaxTitleLength(state.MaxTitleLength);
-        state.DeepCapsuleTitleMeasureCharacterLimit = Math.Clamp(state.DeepCapsuleTitleMeasureCharacterLimit, 0, PaperTitles.MaxConfigurableTitleLength);
-        state.GlobalHotkeys = GlobalShortcutCatalog.NormalizeBindings(state.GlobalHotkeys);
-        state.GlobalHotkeyEnabled = GlobalShortcutCatalog.NormalizeEnabled(state.GlobalHotkeyEnabled);
+        state.MaxTitleLength = PaperTitleRules.NormalizeMaxTitleLength(
+            state.MaxTitleLength);
+        state.DeepCapsuleTitleMeasureCharacterLimit = Math.Clamp(
+            state.DeepCapsuleTitleMeasureCharacterLimit,
+            0,
+            PaperTitleRules.MaxConfigurableTitleLength);
+        state.GlobalHotkeys = _platform.NormalizeGlobalHotkeys(state.GlobalHotkeys);
+        state.GlobalHotkeyEnabled = _platform.NormalizeGlobalHotkeyEnabled(
+            state.GlobalHotkeyEnabled);
 
         if (!state.UseCapsuleMode || !state.UseDeepCapsuleMode)
         {
@@ -552,7 +586,7 @@ public sealed class StateStore
 
         var keepDeepCapsuleStartTopMargins = state.UseCapsuleMode && state.UseDeepCapsuleMode && state.UseCapsuleCollapseAll;
         state.DeepCapsuleStartTopMargin = keepDeepCapsuleStartTopMargins
-            ? NormalizeDeepCapsuleStartTopMargin(
+            ? _platform.NormalizeDeepCapsuleStartTopMargin(
                 state.DeepCapsuleStartTopMargin,
                 state.DeepCapsuleMonitorDeviceName,
                 DeepCapsuleGapSizes.Value(state.DeepCapsuleGapSize))
@@ -580,7 +614,7 @@ public sealed class StateStore
         }
     }
 
-    private static void NormalizePapers(AppState state)
+    private void NormalizePapers(AppState state)
     {
         var usedPaperIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var paper in state.Papers)
@@ -600,6 +634,7 @@ public sealed class StateStore
                 : PaperBodyProviderIds.Markdown;
             // Plugin state is opaque persisted data. Validate it only when that provider starts;
             // load normalization must never replace recoverable bytes with an empty state.
+            paper.BodyHeaderText ??= "";
             paper.BodyCapsuleText ??= "";
             if (paper.BodyCapsuleText.Length > 120)
             {
@@ -622,10 +657,13 @@ public sealed class StateStore
             var capsuleMonitorDeviceName = string.IsNullOrWhiteSpace(paper.CapsuleMonitorDeviceName)
                 ? (state.DeepCapsuleMonitorDeviceName ?? "")
                 : paper.CapsuleMonitorDeviceName.Trim();
-            paper.CapsuleMonitorDeviceName = WindowWorkAreaHelper.NormalizeQueueMonitorDeviceName(capsuleMonitorDeviceName);
+            paper.CapsuleMonitorDeviceName = _platform.NormalizeMonitorDeviceName(
+                capsuleMonitorDeviceName);
             NormalizeDeepCapsuleExpandedGeometry(paper);
 
-            paper.Title = PaperTitles.CleanCustomTitle(paper.Title, state.MaxTitleLength);
+            paper.Title = PaperTitleRules.CleanCustomTitle(
+                paper.Title,
+                state.MaxTitleLength);
             paper.X = NormalizeCoordinate(paper.X, 120);
             paper.Y = NormalizeCoordinate(paper.Y, 120);
             if (double.IsNaN(paper.TextZoom) || double.IsInfinity(paper.TextZoom) || paper.TextZoom <= 0)
@@ -778,7 +816,7 @@ public sealed class StateStore
             : value;
     }
 
-    private static void NormalizeDeepCapsuleExpandedGeometry(PaperData paper)
+    private void NormalizeDeepCapsuleExpandedGeometry(PaperData paper)
     {
         if (!paper.DeepCapsuleExpandedX.HasValue ||
             !paper.DeepCapsuleExpandedY.HasValue ||
@@ -811,7 +849,8 @@ public sealed class StateStore
         var monitor = string.IsNullOrWhiteSpace(paper.DeepCapsuleExpandedMonitorDeviceName)
             ? paper.CapsuleMonitorDeviceName
             : paper.DeepCapsuleExpandedMonitorDeviceName.Trim();
-        paper.DeepCapsuleExpandedMonitorDeviceName = WindowWorkAreaHelper.NormalizeQueueMonitorDeviceName(monitor);
+        paper.DeepCapsuleExpandedMonitorDeviceName =
+            _platform.NormalizeMonitorDeviceName(monitor);
     }
 
     private static void ClearDeepCapsuleExpandedGeometry(PaperData paper)
@@ -827,7 +866,7 @@ public sealed class StateStore
     private static bool IsFinite(double value)
         => !double.IsNaN(value) && !double.IsInfinity(value);
 
-    private static Dictionary<string, bool> NormalizeCollapseAllActiveQueues(Dictionary<string, bool> source)
+    private Dictionary<string, bool> NormalizeCollapseAllActiveQueues(Dictionary<string, bool> source)
     {
         var normalized = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var (key, value) in source)
@@ -842,7 +881,7 @@ public sealed class StateStore
         return normalized;
     }
 
-    private static Dictionary<string, double> NormalizeQueueStartTopMargins(Dictionary<string, double> source)
+    private Dictionary<string, double> NormalizeQueueStartTopMargins(Dictionary<string, double> source)
     {
         var normalized = new Dictionary<string, double>(StringComparer.Ordinal);
         foreach (var (key, value) in source)
@@ -857,7 +896,7 @@ public sealed class StateStore
         return normalized;
     }
 
-    private static string NormalizeQueueKey(string? key)
+    private string NormalizeQueueKey(string? key)
     {
         var value = (key ?? "").Trim();
         var separator = value.LastIndexOf('|');
@@ -871,15 +910,9 @@ public sealed class StateStore
         return QueueKey(monitorDeviceName, side);
     }
 
-    private static string QueueKey(string? monitorDeviceName, string? side)
-        => $"{WindowWorkAreaHelper.NormalizeQueueMonitorDeviceName(monitorDeviceName)}|{(side == DeepCapsuleSides.Left ? DeepCapsuleSides.Left : DeepCapsuleSides.Right)}";
-
-    private static double NormalizeDeepCapsuleStartTopMargin(
-        double value,
-        string monitorDeviceName,
-        double gap)
-    {
-        var area = EdgeCapsuleLayout.LocalWorkAreaForQueue(monitorDeviceName);
-        return EdgeCapsuleLayout.NormalizeStartTopMargin(value, area, 1, gap);
-    }
+    private string QueueKey(string? monitorDeviceName, string? side) =>
+        $"{_platform.NormalizeMonitorDeviceName(monitorDeviceName)}|" +
+        (side == DeepCapsuleSides.Left
+            ? DeepCapsuleSides.Left
+            : DeepCapsuleSides.Right);
 }

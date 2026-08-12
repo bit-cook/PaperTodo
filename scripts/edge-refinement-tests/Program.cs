@@ -1,19 +1,20 @@
 extern alias PaperTodoApp;
+extern alias PaperTodoCore;
 
 using NativeBoundsPolicy = PaperTodoApp::PaperTodo.WindowNativeBoundsPolicy;
-using AppEdge = PaperTodoApp::PaperTodo.EdgeCapsuleEdge;
-using AppFrame = PaperTodoApp::PaperTodo.EdgeCapsulePresentationFrame;
-using AppLayoutFacts = PaperTodoApp::PaperTodo.EdgeCapsuleLayoutFacts;
-using AppLayoutService = PaperTodoApp::PaperTodo.EdgeCapsuleLayoutService;
-using AppMonitor = PaperTodoApp::PaperTodo.MonitorGeometry;
-using AppMotionEnvelope = PaperTodoApp::PaperTodo.EdgeCapsuleMotionEnvelopePolicy;
-using AppPlacement = PaperTodoApp::PaperTodo.EdgeCapsulePlacement;
-using AppRect = PaperTodoApp::PaperTodo.DeviceScreenRect;
-using AppSurface = PaperTodoApp::PaperTodo.EdgeCapsuleSurfaceKind;
-using AppTarget = PaperTodoApp::PaperTodo.EdgeCapsuleTargetPresentation;
-using AppTransition = PaperTodoApp::PaperTodo.EdgeCapsuleTransition;
-using AppTransitionPolicy = PaperTodoApp::PaperTodo.EdgeCapsuleTransitionPolicy;
-using AppTransitionReason = PaperTodoApp::PaperTodo.EdgeCapsuleTransitionReason;
+using AppEdge = PaperTodoCore::PaperTodo.EdgeCapsuleEdge;
+using AppFrame = PaperTodoCore::PaperTodo.EdgeCapsulePresentationFrame;
+using AppLayoutFacts = PaperTodoCore::PaperTodo.EdgeCapsuleLayoutFacts;
+using AppLayoutService = PaperTodoCore::PaperTodo.EdgeCapsuleLayoutService;
+using AppMonitor = PaperTodoCore::PaperTodo.MonitorGeometry;
+using AppMotionEnvelope = PaperTodoCore::PaperTodo.EdgeCapsuleMotionEnvelopePolicy;
+using AppPlacement = PaperTodoCore::PaperTodo.EdgeCapsulePlacement;
+using AppRect = PaperTodoCore::PaperTodo.DeviceScreenRect;
+using AppSurface = PaperTodoCore::PaperTodo.EdgeCapsuleSurfaceKind;
+using AppTarget = PaperTodoCore::PaperTodo.EdgeCapsuleTargetPresentation;
+using AppTransition = PaperTodoCore::PaperTodo.EdgeCapsuleTransition;
+using AppTransitionPolicy = PaperTodoCore::PaperTodo.EdgeCapsuleTransitionPolicy;
+using AppTransitionReason = PaperTodoCore::PaperTodo.EdgeCapsuleTransitionReason;
 
 namespace PaperTodo;
 
@@ -127,18 +128,22 @@ internal static class Program
 
         CheckCorridorIntentPrediction();
 
-        var overflowArea = new System.Windows.Rect(0, 0, 400, 300);
+        var overflowArea = PaperTodoCore::PaperTodo.DipRect.FromPositionAndSize(
+            0,
+            0,
+            400,
+            300);
         const int overflowSlotCount = 12;
         const double overflowGap = 6;
-        var overflowTop = PaperTodoApp::PaperTodo.EdgeCapsuleLayout.TopForIndex(
+        var overflowTop = PaperTodoCore::PaperTodo.EdgeCapsuleLayout.TopForIndex(
             10,
-            PaperTodoApp::PaperTodo.EdgeCapsuleLayout.StartTopMargin,
+            PaperTodoCore::PaperTodo.EdgeCapsuleLayout.StartTopMargin,
             overflowArea,
             overflowSlotCount,
             overflowGap);
-        var nextOverflowTop = PaperTodoApp::PaperTodo.EdgeCapsuleLayout.TopForIndex(
+        var nextOverflowTop = PaperTodoCore::PaperTodo.EdgeCapsuleLayout.TopForIndex(
             11,
-            PaperTodoApp::PaperTodo.EdgeCapsuleLayout.StartTopMargin,
+            PaperTodoCore::PaperTodo.EdgeCapsuleLayout.StartTopMargin,
             overflowArea,
             overflowSlotCount,
             overflowGap);
@@ -148,7 +153,7 @@ internal static class Program
         Assert(
             Math.Abs(
                 (nextOverflowTop - overflowTop) -
-                PaperTodoApp::PaperTodo.EdgeCapsuleLayout.SlotHeight(overflowGap)) < 0.001,
+                PaperTodoCore::PaperTodo.EdgeCapsuleLayout.SlotHeight(overflowGap)) < 0.001,
             "overflow capsules must preserve normal slot spacing");
 
         Assert(

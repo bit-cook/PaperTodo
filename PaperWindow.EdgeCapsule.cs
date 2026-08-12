@@ -472,7 +472,8 @@ public sealed partial class PaperWindow
 
     private Rect DeepCapsuleWorkArea()
     {
-        return EdgeCapsuleLayout.WorkAreaForQueue(_paper.CapsuleMonitorDeviceName);
+        return EdgeCapsuleWpfWorkAreas.WorkAreaForQueue(
+            _paper.CapsuleMonitorDeviceName);
     }
 
     private MonitorGeometry DeepCapsuleMonitorGeometry()

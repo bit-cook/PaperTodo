@@ -240,7 +240,9 @@ public sealed partial class PaperWindow
 
     private UIElement BuildTodoAppendArea()
     {
-        var metrics = TodoVisualSizes.Metrics(_controller.State.TodoVisualSize);
+        var metrics = TodoVisualSizes.Metrics(
+            _controller.State.TodoVisualSize,
+            AppTypography.ScaleFactor);
         var area = new Border
         {
             Margin = new Thickness(0, 6, 0, 2),
@@ -320,7 +322,9 @@ public sealed partial class PaperWindow
 
             if (_appendArea.Child is TextBlock text)
             {
-                var metrics = TodoVisualSizes.Metrics(_controller.State.TodoVisualSize);
+                var metrics = TodoVisualSizes.Metrics(
+                    _controller.State.TodoVisualSize,
+                    AppTypography.ScaleFactor);
                 text.Text = "🗑";
                 text.Foreground = TrashTextBrush;
                 text.Opacity = hovered ? 1.0 : 0.65;
@@ -335,7 +339,9 @@ public sealed partial class PaperWindow
 
             if (_appendArea.Child is TextBlock text)
             {
-                var metrics = TodoVisualSizes.Metrics(_controller.State.TodoVisualSize);
+                var metrics = TodoVisualSizes.Metrics(
+                    _controller.State.TodoVisualSize,
+                    AppTypography.ScaleFactor);
                 text.Text = "＋";
                 text.Foreground = WeakTextBrush;
                 text.Opacity = 0.42;
@@ -436,7 +442,9 @@ public sealed partial class PaperWindow
 
     private Border BuildTodoRow(PaperItem item, bool isNewItem = false)
     {
-        var metrics = TodoVisualSizes.Metrics(_controller.State.TodoVisualSize);
+        var metrics = TodoVisualSizes.Metrics(
+            _controller.State.TodoVisualSize,
+            AppTypography.ScaleFactor);
         var linkedPaperTitle = "";
         var hasLinkedPath = !string.IsNullOrWhiteSpace(item.LinkedPath);
         var hasLinkedPaper = _controller.State.EnableTodoPaperLinks &&
@@ -1866,7 +1874,9 @@ public sealed partial class PaperWindow
 
     private Border CreateTodoDragGhost(TodoDragState state)
     {
-        var metrics = TodoVisualSizes.Metrics(_controller.State.TodoVisualSize);
+        var metrics = TodoVisualSizes.Metrics(
+            _controller.State.TodoVisualSize,
+            AppTypography.ScaleFactor);
         var item = _paper.Items.FirstOrDefault(i => i.Id == state.ItemId);
         var text = TodoDragGhostText(item?.Text ?? "");
         var done = !IsTodoGroupDrag && item?.Done == true;

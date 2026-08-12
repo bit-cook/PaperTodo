@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -134,7 +135,10 @@ public sealed class SingleInstanceHelper : IDisposable
 
     private static string EncodeArgs(IReadOnlyList<string> args)
     {
-        var json = JsonSerializer.Serialize(args);
+        var serializableArgs = args as string[] ?? args.ToArray();
+        var json = JsonSerializer.Serialize(
+            serializableArgs,
+            SingleInstanceJsonSerializerContext.Default.StringArray);
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 
@@ -148,7 +152,9 @@ public sealed class SingleInstanceHelper : IDisposable
         try
         {
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(message));
-            return JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>();
+            return JsonSerializer.Deserialize(
+                json,
+                SingleInstanceJsonSerializerContext.Default.StringArray) ?? Array.Empty<string>();
         }
         catch
         {
@@ -192,4 +198,9 @@ public sealed class SingleInstanceHelper : IDisposable
             // ignored
         }
     }
+}
+
+[JsonSerializable(typeof(string[]))]
+internal sealed partial class SingleInstanceJsonSerializerContext : JsonSerializerContext
+{
 }

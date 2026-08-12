@@ -1,12 +1,14 @@
 namespace PaperTodo;
 
 internal readonly record struct EdgeCapsuleQueueMember(
-    PaperData Paper,
+    string PaperId,
     string QueueKey);
+
+internal readonly record struct EdgeCapsuleQueuePaper(string Id);
 
 internal sealed record EdgeCapsuleQueue(
     string Key,
-    IReadOnlyList<PaperData> Papers,
+    IReadOnlyList<EdgeCapsuleQueuePaper> Papers,
     bool HasMaster);
 
 internal sealed class EdgeCapsuleQueuePlan
@@ -58,17 +60,23 @@ internal static class EdgeCapsuleQueueCoordinator
         IEnumerable<EdgeCapsuleQueueMember> members,
         bool showMaster)
     {
-        var queueMembers = new Dictionary<string, List<PaperData>>(StringComparer.Ordinal);
+        var queueMembers = new Dictionary<string, List<EdgeCapsuleQueuePaper>>(
+            StringComparer.Ordinal);
         var queueOrder = new List<string>();
         foreach (var member in members)
         {
+            if (string.IsNullOrWhiteSpace(member.PaperId))
+            {
+                continue;
+            }
+
             if (!queueMembers.TryGetValue(member.QueueKey, out var papers))
             {
-                papers = new List<PaperData>();
+                papers = new List<EdgeCapsuleQueuePaper>();
                 queueMembers[member.QueueKey] = papers;
                 queueOrder.Add(member.QueueKey);
             }
-            papers.Add(member.Paper);
+            papers.Add(new EdgeCapsuleQueuePaper(member.PaperId));
         }
 
         var queues = new List<EdgeCapsuleQueue>(queueOrder.Count);

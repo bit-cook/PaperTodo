@@ -174,7 +174,7 @@ internal static class EdgeCapsuleTargetPlanner
             true,
             EdgeCapsuleSurfaceKind.FloatingFree,
             Math.Max(
-                PaperLayoutDefaults.CapsuleWidth,
+                EdgeCapsuleProductMetrics.MinimumFloatingWidthDip,
                 layout.RestingWidthDip + EdgeCapsuleLayout.WindowChromeMargin),
             height,
             bodyHeight,

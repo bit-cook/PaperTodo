@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <AssemblyName>PaperTodo.Platform.Windows</AssemblyName>
+    <RootNamespace>PaperTodo</RootNamespace>
+    <PaperTodoLmdbLibrary>$(MSBuildProjectDirectory)\..\..\native\lmdb\bin\win-x64\papertodo_lmdb.dll</PaperTodoLmdbLibrary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PaperTodo.Core\PaperTodo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="$(PaperTodoLmdbLibrary)">
+      <Link>papertodo_lmdb.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <!-- Executable projects own deployment. PublishAot is not reliably propagated when this
+           project is evaluated through ProjectReference, so never leak the migration DLL here. -->
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PaperTodo" />
+    <InternalsVisibleTo Include="PaperTodo.Avalonia" />
+    <InternalsVisibleTo Include="EdgeRefinementChecks" />
+  </ItemGroup>
+
+  <Target
+      Name="EnsurePaperTodoLmdbLibrary"
+      BeforeTargets="PrepareForBuild"
+      Condition="'$(PublishAot)' != 'true'">
+    <Error
+      Condition="!Exists('$(PaperTodoLmdbLibrary)')"
+      Text="PaperTodo's native LMDB library is missing. Restore native\lmdb\bin\win-x64\papertodo_lmdb.dll or build it with native\lmdb\build.ps1." />
+  </Target>
+</Project>

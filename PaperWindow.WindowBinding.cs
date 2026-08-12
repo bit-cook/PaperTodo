@@ -31,8 +31,7 @@ public sealed partial class PaperWindow
         button.PreviewMouseLeftButtonDown += (_, e) =>
         {
             _windowBindingPressStart = HasExperimentalWindowTether
-                ? DeviceScreenPoint.FromPoint(
-                    PointToScreen(e.GetPosition(this)))
+                ? PointToScreen(e.GetPosition(this)).ToDeviceScreenPoint()
                 : null;
         };
         button.PreviewMouseLeftButtonUp += (_, _) =>
@@ -163,7 +162,7 @@ public sealed partial class PaperWindow
         TopBarDragFeedback feedback,
         DeviceScreenPoint point)
     {
-        _controller.UpdatePaperLinkDrag(_paper, point.ToPoint());
+        _controller.UpdatePaperLinkDrag(_paper, point.ToWpfPoint());
         if (_controller.HasPaperLinkDropTarget)
         {
             _windowBindingDragTarget = null;
@@ -192,7 +191,7 @@ public sealed partial class PaperWindow
     {
         if (commit && WindowNative.TryGetCursorScreenPosition(out var cursor))
         {
-            _controller.UpdatePaperLinkDrag(_paper, cursor.ToPoint());
+            _controller.UpdatePaperLinkDrag(_paper, cursor.ToWpfPoint());
         }
 
         var linkedTodo = _controller.EndPaperLinkDrag(_paper, commit);

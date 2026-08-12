@@ -36,7 +36,9 @@ public sealed partial class AppController : IDisposable
 
     public static AppController Current { get; private set; } = null!;
 
-    private readonly StateStore _store = new();
+    private readonly StateStore _store = new(
+        new WpfStateStorePlatform(),
+        loadFailureMessage: Strings.Get("StateLoadFailed"));
     private readonly NoteImageStore _imageStore = new();
     private readonly Dictionary<string, PaperWindow> _windows = new();
     private readonly DispatcherTimer _saveTimer;
@@ -643,7 +645,8 @@ public sealed partial class AppController : IDisposable
             return;
         }
 
-        var area = EdgeCapsuleLayout.WorkAreaForQueue(paper.CapsuleMonitorDeviceName);
+        var area = EdgeCapsuleWpfWorkAreas.WorkAreaForQueue(
+            paper.CapsuleMonitorDeviceName);
         if (area.Width <= 0 || area.Height <= 0)
         {
             return;
@@ -2319,7 +2322,8 @@ public sealed partial class AppController : IDisposable
         queueMembers.Insert(targetIndex, draggedPaper);
 
         var plan = EdgeCapsuleQueueCoordinator.Build(
-            queueMembers.Select(member => new EdgeCapsuleQueueMember(member, queueKey)),
+            queueMembers.Select(member =>
+                new EdgeCapsuleQueueMember(member.Id, queueKey)),
             State.UseCapsuleCollapseAll);
         if (plan.Queues.Count == 0)
         {
@@ -2517,7 +2521,7 @@ public sealed partial class AppController : IDisposable
             return false;
         }
 
-        var area = EdgeCapsuleLayout.WorkAreaForQueue(currentMonitor);
+        var area = EdgeCapsuleWpfWorkAreas.WorkAreaForQueue(currentMonitor);
         if (area.Width <= 0 || area.Height <= 0)
         {
             return false;
@@ -2691,7 +2695,8 @@ public sealed partial class AppController : IDisposable
         var capsulePapers = DeepCapsulePapersInOrder();
 
         var plan = EdgeCapsuleQueueCoordinator.Build(
-            capsulePapers.Select(paper => new EdgeCapsuleQueueMember(paper, QueueKey(paper))),
+            capsulePapers.Select(paper =>
+                new EdgeCapsuleQueueMember(paper.Id, QueueKey(paper))),
             State.UseCapsuleCollapseAll);
         plan = ApplyEdgeCapsulePreviewLayout(plan);
         var queueKeys = plan.Queues.Select(queue => queue.Key).ToList();
@@ -2755,7 +2760,8 @@ public sealed partial class AppController : IDisposable
                 foreach (var paper in queue.Papers)
                 {
                     if (_windows.TryGetValue(paper.Id, out var window) &&
-                        ShouldPaperOccupyDeepCapsuleSlot(paper, window))
+                        State.Papers.FirstOrDefault(item => item.Id == paper.Id) is { } data &&
+                        ShouldPaperOccupyDeepCapsuleSlot(data, window))
                     {
                         window.FlushStartupDeepCapsulePresentation();
                     }
@@ -2791,7 +2797,11 @@ public sealed partial class AppController : IDisposable
             }
 
             liveKeys.Add(key);
-            var sample = papers[0];
+            var sample = State.Papers.FirstOrDefault(item => item.Id == papers[0].Id);
+            if (sample == null)
+            {
+                continue;
+            }
             var edge = sample.CapsuleSide == DeepCapsuleSides.Left ? EdgeCapsuleEdge.Left : EdgeCapsuleEdge.Right;
             var monitor = sample.CapsuleMonitorDeviceName;
             var retracted = IsCapsuleCollapseAllActiveForQueue(key);
@@ -3590,7 +3600,7 @@ public sealed partial class AppController : IDisposable
 
         var side = edge == EdgeCapsuleEdge.Left ? DeepCapsuleSides.Left : DeepCapsuleSides.Right;
         var key = QueueKey(monitorDeviceName, side);
-        var area = EdgeCapsuleLayout.LocalWorkAreaForQueue(monitorDeviceName);
+        var area = EdgeCapsuleWpfWorkAreas.LocalWorkAreaForQueue(monitorDeviceName);
 
         // Slot count for THIS queue (+1 if its master occupies slot 0).
         var queueCount = DeepCapsulePapersInOrder().Count(p => QueueKey(p) == key);

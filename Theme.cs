@@ -7,20 +7,6 @@ using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace PaperTodo;
 
-public static class ColorSchemes
-{
-    public const string Warm = "warm";
-    public const string Ink = "ink";
-    public const string Forest = "forest";
-    public const string Rose = "rose";
-
-    public static readonly string[] All = { Warm, Ink, Forest, Rose };
-
-    public static bool IsValid(string? id) => id is Warm or Ink or Forest or Rose;
-
-    public static string Normalize(string? id) => IsValid(id) ? id! : Warm;
-}
-
 public static class Theme
 {
     // 一套主题的全部基色。半透明叠加色（hover / 拖放 / 标题栏 / 删除区）

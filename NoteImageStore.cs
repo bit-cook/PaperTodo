@@ -1656,16 +1656,3 @@ public sealed class NoteImageStore : IDisposable
         int Width,
         int Height);
 }
-
-public sealed class NoteImageAsset
-{
-    public string Id { get; set; } = "";
-    public string NoteId { get; set; } = "";
-    public string Mime { get; set; } = "image/png";
-    public int Width { get; set; }
-    public int Height { get; set; }
-    public string Sha256 { get; set; } = "";
-    public int ByteLength { get; set; }
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public string? OriginalName { get; set; }
-}

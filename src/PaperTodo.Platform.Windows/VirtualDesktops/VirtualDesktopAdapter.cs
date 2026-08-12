@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 
 namespace PaperTodo;
 
@@ -15,15 +16,21 @@ internal readonly record struct VirtualDesktopProbeResult(
 
 // Uses only the documented Windows 10+ IVirtualDesktopManager surface. No internal shell
 // interfaces or build-specific vtable layouts are involved.
-internal sealed class VirtualDesktopAdapter : IDisposable
+internal sealed partial class VirtualDesktopAdapter : IDisposable
 {
     private static readonly Guid VirtualDesktopManagerClassId =
         new("AA509086-5CA9-4C25-8F95-589D3C07B48A");
+    private static readonly Guid VirtualDesktopManagerInterfaceId =
+        new("A5CD92FF-29BE-454C-8D04-D82879FB3F1B");
+
+    private const uint ClassContextInProcessServer = 0x1;
     private const int EFail = unchecked((int)0x80004005);
     private const int EInvalidArg = unchecked((int)0x80070057);
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
     private const int WsPopup = unchecked((int)0x80000000);
+
+    private static readonly VirtualDesktopComWrappers ComWrappers = new();
 
     private IVirtualDesktopManager? _manager;
     private bool _activationAttempted;
@@ -49,24 +56,19 @@ internal sealed class VirtualDesktopAdapter : IDisposable
     }
 
     public bool TryIsWindowOnCurrentDesktop(
-        IntPtr window,
+        nint window,
         out bool onCurrentDesktop)
     {
         onCurrentDesktop = false;
-        if (window == IntPtr.Zero ||
-            !TryGetManager(out var manager))
+        if (window == 0 || !TryGetManager(out var manager))
         {
-            LastHResult = window == IntPtr.Zero
-                ? EInvalidArg
-                : LastHResult;
+            LastHResult = window == 0 ? EInvalidArg : LastHResult;
             return false;
         }
 
         try
         {
-            var result = manager.IsWindowOnCurrentVirtualDesktop(
-                window,
-                out var onCurrent);
+            var result = manager.IsWindowOnCurrentVirtualDesktop(window, out var onCurrent);
             LastHResult = result;
             if (result < 0)
             {
@@ -83,25 +85,18 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
     }
 
-    public bool TryGetWindowDesktopId(
-        IntPtr window,
-        out Guid desktopId)
+    public bool TryGetWindowDesktopId(nint window, out Guid desktopId)
     {
         desktopId = Guid.Empty;
-        if (window == IntPtr.Zero ||
-            !TryGetManager(out var manager))
+        if (window == 0 || !TryGetManager(out var manager))
         {
-            LastHResult = window == IntPtr.Zero
-                ? EInvalidArg
-                : LastHResult;
+            LastHResult = window == 0 ? EInvalidArg : LastHResult;
             return false;
         }
 
         try
         {
-            var result = manager.GetWindowDesktopId(
-                window,
-                out desktopId);
+            var result = manager.GetWindowDesktopId(window, out desktopId);
             LastHResult = result;
             return result >= 0 && desktopId != Guid.Empty;
         }
@@ -113,26 +108,19 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
     }
 
-    public bool TryMoveWindowToDesktop(
-        IntPtr window,
-        Guid desktopId)
+    public bool TryMoveWindowToDesktop(nint window, Guid desktopId)
     {
-        if (window == IntPtr.Zero ||
-            desktopId == Guid.Empty ||
-            !TryGetManager(out var manager))
+        if (window == 0 || desktopId == Guid.Empty || !TryGetManager(out var manager))
         {
-            LastHResult =
-                window == IntPtr.Zero || desktopId == Guid.Empty
-                    ? EInvalidArg
-                    : LastHResult;
+            LastHResult = window == 0 || desktopId == Guid.Empty
+                ? EInvalidArg
+                : LastHResult;
             return false;
         }
 
         try
         {
-            var result = manager.MoveWindowToDesktop(
-                window,
-                ref desktopId);
+            var result = manager.MoveWindowToDesktop(window, ref desktopId);
             LastHResult = result;
             return result >= 0;
         }
@@ -152,10 +140,8 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
 
         var foreground = GetForegroundWindow();
-        if (foreground != IntPtr.Zero &&
-            TryIsWindowOnCurrentDesktop(
-                foreground,
-                out var foregroundIsCurrent) &&
+        if (foreground != 0 &&
+            TryIsWindowOnCurrentDesktop(foreground, out var foregroundIsCurrent) &&
             foregroundIsCurrent &&
             TryGetWindowDesktopId(foreground, out desktopId))
         {
@@ -171,22 +157,19 @@ internal sealed class VirtualDesktopAdapter : IDisposable
             -32000,
             1,
             1,
-            IntPtr.Zero,
-            IntPtr.Zero,
-            IntPtr.Zero,
-            IntPtr.Zero);
-        if (referenceWindow == IntPtr.Zero)
+            0,
+            0,
+            0,
+            0);
+        if (referenceWindow == 0)
         {
-            LastHResult = HResultFromWin32(
-                Marshal.GetLastPInvokeError());
+            LastHResult = HResultFromWin32(Marshal.GetLastPInvokeError());
             return false;
         }
 
         try
         {
-            return TryGetWindowDesktopId(
-                referenceWindow,
-                out desktopId);
+            return TryGetWindowDesktopId(referenceWindow, out desktopId);
         }
         finally
         {
@@ -194,8 +177,7 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
     }
 
-    private bool TryGetManager(
-        out IVirtualDesktopManager manager)
+    private unsafe bool TryGetManager(out IVirtualDesktopManager manager)
     {
         manager = null!;
         if (_disposed)
@@ -216,21 +198,35 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
 
         _activationAttempted = true;
+        nint interfacePointer = 0;
         try
         {
-            var managerType = Type.GetTypeFromCLSID(
-                VirtualDesktopManagerClassId,
-                throwOnError: false);
-            if (managerType == null ||
-                Activator.CreateInstance(managerType) is not
-                    IVirtualDesktopManager created)
+            var classId = VirtualDesktopManagerClassId;
+            var interfaceId = VirtualDesktopManagerInterfaceId;
+            var result = CoCreateInstance(
+                in classId,
+                0,
+                ClassContextInProcessServer,
+                in interfaceId,
+                out interfacePointer);
+            LastHResult = result;
+            if (result < 0 || interfacePointer == 0)
             {
-                LastHResult = EFail;
                 return false;
             }
 
-            _manager = created;
-            manager = created;
+            var created = ComWrappers.GetOrCreateObjectForComInstance(
+                interfacePointer,
+                CreateObjectFlags.UniqueInstance);
+            if (created is not IVirtualDesktopManager createdManager)
+            {
+                LastHResult = EFail;
+                ComWrappers.Release(created);
+                return false;
+            }
+
+            _manager = createdManager;
+            manager = createdManager;
             LastHResult = 0;
             return true;
         }
@@ -239,16 +235,18 @@ internal sealed class VirtualDesktopAdapter : IDisposable
             LastHResult = Marshal.GetHRForException(ex);
             return false;
         }
+        finally
+        {
+            if (interfacePointer != 0)
+            {
+                ComInterfaceMarshaller<IVirtualDesktopManager>.Free((void*)interfacePointer);
+            }
+        }
     }
 
-    private static int HResultFromWin32(int error)
-    {
-        return error <= 0
-            ? EFail
-            : unchecked((int)(
-                0x80070000u |
-                ((uint)error & 0x0000FFFFu)));
-    }
+    private static int HResultFromWin32(int error) => error <= 0
+        ? EFail
+        : unchecked((int)(0x80070000u | ((uint)error & 0x0000FFFFu)));
 
     public void Dispose()
     {
@@ -260,11 +258,11 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         _disposed = true;
         var manager = _manager;
         _manager = null;
-        if (manager != null && Marshal.IsComObject(manager))
+        if (manager != null)
         {
             try
             {
-                _ = Marshal.FinalReleaseComObject(manager);
+                ComWrappers.Release(manager);
             }
             catch
             {
@@ -273,35 +271,23 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         }
     }
 
-    [ComImport]
-    [Guid("A5CD92FF-29BE-454C-8D04-D82879FB3F1B")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IVirtualDesktopManager
-    {
-        [PreserveSig]
-        int IsWindowOnCurrentVirtualDesktop(
-            IntPtr topLevelWindow,
-            out int onCurrentDesktop);
+    [LibraryImport("ole32.dll")]
+    private static partial int CoCreateInstance(
+        in Guid classId,
+        nint outer,
+        uint classContext,
+        in Guid interfaceId,
+        out nint instance);
 
-        [PreserveSig]
-        int GetWindowDesktopId(
-            IntPtr topLevelWindow,
-            out Guid desktopId);
+    [LibraryImport("user32.dll")]
+    private static partial nint GetForegroundWindow();
 
-        [PreserveSig]
-        int MoveWindowToDesktop(
-            IntPtr topLevelWindow,
-            ref Guid desktopId);
-    }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport(
+    [LibraryImport(
         "user32.dll",
-        CharSet = CharSet.Unicode,
-        SetLastError = true)]
-    private static extern IntPtr CreateWindowEx(
+        EntryPoint = "CreateWindowExW",
+        SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint CreateWindowEx(
         int extendedStyle,
         string className,
         string windowName,
@@ -310,11 +296,31 @@ internal sealed class VirtualDesktopAdapter : IDisposable
         int y,
         int width,
         int height,
-        IntPtr parent,
-        IntPtr menu,
-        IntPtr instance,
-        IntPtr parameter);
+        nint parent,
+        nint menu,
+        nint instance,
+        nint parameter);
 
-    [DllImport("user32.dll")]
-    private static extern bool DestroyWindow(IntPtr window);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(nint window);
+
+    private sealed class VirtualDesktopComWrappers : StrategyBasedComWrappers
+    {
+        public void Release(object instance) => ReleaseObjects(new[] { instance });
+    }
+}
+
+[GeneratedComInterface(Options = ComInterfaceOptions.ComObjectWrapper)]
+[Guid("A5CD92FF-29BE-454C-8D04-D82879FB3F1B")]
+internal partial interface IVirtualDesktopManager
+{
+    [PreserveSig]
+    int IsWindowOnCurrentVirtualDesktop(nint topLevelWindow, out int onCurrentDesktop);
+
+    [PreserveSig]
+    int GetWindowDesktopId(nint topLevelWindow, out Guid desktopId);
+
+    [PreserveSig]
+    int MoveWindowToDesktop(nint topLevelWindow, ref Guid desktopId);
 }

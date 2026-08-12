@@ -1,4 +1,4 @@
-extern alias PaperTodoApp;
+extern alias PaperTodoCore;
 
 using System.Runtime.CompilerServices;
 
@@ -11,44 +11,44 @@ internal static class PreviewTransferLayoutRegression
     {
         var papers = new[]
         {
-            new PaperTodoApp::PaperTodo.PaperData { Id = "A" },
-            new PaperTodoApp::PaperTodo.PaperData { Id = "B" },
-            new PaperTodoApp::PaperTodo.PaperData { Id = "C" },
-            new PaperTodoApp::PaperTodo.PaperData { Id = "D" },
-            new PaperTodoApp::PaperTodo.PaperData { Id = "E" },
-            new PaperTodoApp::PaperTodo.PaperData { Id = "F" }
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("A"),
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("B"),
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("C"),
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("D"),
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("E"),
+            new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePaper("F")
         };
 
-        var queue = new PaperTodoApp::PaperTodo.EdgeCapsuleQueue(
+        var queue = new PaperTodoCore::PaperTodo.EdgeCapsuleQueue(
             "|right",
             papers,
             HasMaster: false);
         var placements = new Dictionary<
             string,
-            PaperTodoApp::PaperTodo.EdgeCapsulePlacement>(StringComparer.Ordinal);
+            PaperTodoCore::PaperTodo.EdgeCapsulePlacement>(StringComparer.Ordinal);
         for (var index = 0; index < papers.Length; index++)
         {
             placements[papers[index].Id] =
-                new PaperTodoApp::PaperTodo.EdgeCapsulePlacement(
+                new PaperTodoCore::PaperTodo.EdgeCapsulePlacement(
                     index,
                     VisualOffset: 0,
                     SlotCount: papers.Length);
         }
 
-        var plan = new PaperTodoApp::PaperTodo.EdgeCapsuleQueuePlan(
+        var plan = new PaperTodoCore::PaperTodo.EdgeCapsuleQueuePlan(
             new[] { queue },
             placements);
         const double compactHeight =
-            PaperTodoApp::PaperTodo.PaperLayoutDefaults.CapsuleHeight;
+            PaperTodoCore::PaperTodo.PaperLayoutDefaults.CapsuleHeight;
         const double gap = 4;
 
         var dSession =
-            PaperTodoApp::PaperTodo.EdgeCapsulePreviewLayoutCoordinator.OpenOrTransfer(
+            PaperTodoCore::PaperTodo.EdgeCapsulePreviewLayoutCoordinator.OpenOrTransfer(
                 plan,
                 previous: null,
                 queueKey: "|right",
                 ownerPaperId: "D",
-                size: new PaperTodoApp::PaperTodo.EdgeCapsulePreviewSize(220, 190),
+                size: new PaperTodoCore::PaperTodo.EdgeCapsulePreviewSize(220, 190),
                 compactHeightDip: compactHeight,
                 gapDip: gap)
             ?? throw new InvalidOperationException("D preview layout should open.");
@@ -62,12 +62,12 @@ internal static class PreviewTransferLayoutRegression
         }
 
         var cSession =
-            PaperTodoApp::PaperTodo.EdgeCapsulePreviewLayoutCoordinator.OpenOrTransfer(
+            PaperTodoCore::PaperTodo.EdgeCapsulePreviewLayoutCoordinator.OpenOrTransfer(
                 plan,
                 previous: dSession,
                 queueKey: "|right",
                 ownerPaperId: "C",
-                size: new PaperTodoApp::PaperTodo.EdgeCapsulePreviewSize(220, 120),
+                size: new PaperTodoCore::PaperTodo.EdgeCapsulePreviewSize(220, 120),
                 compactHeightDip: compactHeight,
                 gapDip: gap)
             ?? throw new InvalidOperationException("C preview layout should open.");

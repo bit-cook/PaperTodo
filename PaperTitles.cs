@@ -6,21 +6,16 @@ public static class PaperTitles
 {
     // Hard storage / edit cap in Unicode text elements (≈ full-width characters for CJK).
     // Titles are never stored longer than this regardless of the user setting.
-    public const int MaxTitleLength = 20;
+    public const int MaxTitleLength = PaperTitleRules.MaxTitleLength;
 
     // User-configurable display/edit cap (Settings → 标题最大长度), within MaxTitleLength.
-    public const int DefaultMaxTitleLength = 6;
-    public const int MinConfigurableTitleLength = 2;
+    public const int DefaultMaxTitleLength = PaperTitleRules.DefaultMaxTitleLength;
+    public const int MinConfigurableTitleLength = PaperTitleRules.MinConfigurableTitleLength;
     public const int MaxConfigurableTitleLength = MaxTitleLength;
 
     public static int NormalizeMaxTitleLength(int value)
     {
-        if (value <= 0)
-        {
-            return DefaultMaxTitleLength;
-        }
-
-        return Math.Clamp(value, MinConfigurableTitleLength, MaxConfigurableTitleLength);
+        return PaperTitleRules.NormalizeMaxTitleLength(value);
     }
 
     public static string DefaultTitle(string paperType, int number)
@@ -43,9 +38,7 @@ public static class PaperTitles
 
     public static string CleanCustomTitle(string? title, int maxLength)
     {
-        var cleaned = (title ?? "").Trim();
-        cleaned = string.Join("", cleaned.Where(ch => !char.IsControl(ch)));
-        return TakeTextElements(cleaned, Math.Clamp(maxLength, 1, MaxTitleLength));
+        return PaperTitleRules.CleanCustomTitle(title, maxLength);
     }
 
     public static string EffectiveTitle(PaperData paper, int fallbackNumber)
@@ -61,14 +54,4 @@ public static class PaperTitles
         return EffectiveTitle(paper, fallbackNumber);
     }
 
-    private static string TakeTextElements(string text, int maxLength)
-    {
-        var indexes = StringInfo.ParseCombiningCharacters(text);
-        if (indexes.Length <= maxLength)
-        {
-            return text;
-        }
-
-        return text[..indexes[maxLength]];
-    }
 }

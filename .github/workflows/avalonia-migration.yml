@@ -1,0 +1,244 @@
+name: Avalonia migration
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/edge-refinement-tests/**"
+      - "native/lmdb/**"
+      - "AGENTS.md"
+      - "PaperTodo.slnx"
+      - "PaperTodo.csproj"
+      - "docs/avalonia-migration.md"
+      - "global.json"
+      - ".github/workflows/avalonia-migration.yml"
+  push:
+    branches:
+      - Avalonia
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/edge-refinement-tests/**"
+      - "native/lmdb/**"
+      - "AGENTS.md"
+      - "PaperTodo.slnx"
+      - "PaperTodo.csproj"
+      - "docs/avalonia-migration.md"
+      - "global.json"
+      - ".github/workflows/avalonia-migration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: avalonia-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+      AVALONIA_TELEMETRY_OPTOUT: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore framework-neutral projects
+        run: |
+          dotnet restore src/PaperTodo.Core/PaperTodo.Core.csproj
+          dotnet restore src/PaperTodo.PluginHost/PaperTodo.PluginHost.csproj
+          dotnet restore tests/PaperTodo.Core.Checks/PaperTodo.Core.Checks.csproj
+          dotnet restore tests/PaperTodo.ReminderPolicy.Checks/PaperTodo.ReminderPolicy.Checks.csproj
+          dotnet restore tests/PaperTodo.PluginHost.Checks/PaperTodo.PluginHost.Checks.csproj
+
+      - name: Build Core with AOT analyzers
+        run: |
+          dotnet build src/PaperTodo.Core/PaperTodo.Core.csproj -c Release --no-restore
+          dotnet build src/PaperTodo.PluginHost/PaperTodo.PluginHost.csproj -c Release --no-restore
+
+      - name: Run persistence compatibility checks
+        run: dotnet run --project tests/PaperTodo.Core.Checks/PaperTodo.Core.Checks.csproj -c Release --no-restore
+
+      - name: Run reminder policy checks
+        run: dotnet run --project tests/PaperTodo.ReminderPolicy.Checks/PaperTodo.ReminderPolicy.Checks.csproj -c Release --no-restore
+
+      - name: Run Native AOT plugin manifest checks
+        run: dotnet run --project tests/PaperTodo.PluginHost.Checks/PaperTodo.PluginHost.Checks.csproj -c Release --no-restore
+
+      - name: Run edge policy checks
+        run: |
+          dotnet restore scripts/edge-refinement-tests/EdgeRefinementChecks.csproj -p:EnableWindowsTargeting=true
+          dotnet build scripts/edge-refinement-tests/EdgeRefinementChecks.csproj -c Release -p:EnableWindowsTargeting=true --no-restore
+
+  windows-native-aot:
+    name: Windows Native AOT
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+      AVALONIA_TELEMETRY_OPTOUT: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Rebuild LMDB
+        run: .\native\lmdb\build.ps1 -Configuration Release -ForceRebuild
+
+      - name: Restore Avalonia app
+        run: dotnet restore .\src\PaperTodo.Avalonia\PaperTodo.Avalonia.csproj -r win-x64
+
+      - name: Build Avalonia and shared Windows layers
+        run: dotnet build .\src\PaperTodo.Avalonia\PaperTodo.Avalonia.csproj -c Release -r win-x64 --no-restore
+
+      - name: Run Windows edge policy checks
+        run: |
+          dotnet restore .\scripts\edge-refinement-tests\EdgeRefinementChecks.csproj
+          dotnet run `
+            --project .\scripts\edge-refinement-tests\EdgeRefinementChecks.csproj `
+            -c Release `
+            --no-restore
+
+      - name: Publish Native AOT
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "papertodo-aot"
+          dotnet publish .\src\PaperTodo.Avalonia\PaperTodo.Avalonia.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -o $publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -LiteralPath $publish -Filter *.exe -File
+          if ($exe.Count -ne 1) {
+            throw "Native AOT publish must produce exactly one application executable; found $($exe.Count)."
+          }
+          $forbiddenPayload = Get-ChildItem -LiteralPath $publish -File |
+            Where-Object {
+              $_.Name -eq 'papertodo_lmdb.dll' -or
+              $_.Extension -in '.deps.json', '.runtimeconfig.json'
+            }
+          if ($forbiddenPayload) {
+            $forbiddenPayload | Format-Table Name, Length
+            throw "Native AOT publish contains migration-only or managed-runtime payload."
+          }
+          $allowedNativeRuntime = @(
+            'av_libglesv2.dll',
+            'libHarfBuzzSharp.dll',
+            'libSkiaSharp.dll'
+          )
+          $unexpectedPayload = Get-ChildItem -LiteralPath $publish -File |
+            Where-Object {
+              $_.Extension -ne '.exe' -and
+              $_.Name -notin $allowedNativeRuntime -and
+              $_.Extension -ne '.pdb'
+            }
+          if ($unexpectedPayload) {
+            $unexpectedPayload | Format-Table Name, Length
+            throw "Native AOT publish contains an unexpected deployment payload."
+          }
+          $missingNativeRuntime = $allowedNativeRuntime |
+            Where-Object { -not (Test-Path -LiteralPath (Join-Path $publish $_) -PathType Leaf) }
+          if ($missingNativeRuntime) {
+            $missingNativeRuntime | Write-Output
+            throw "Native AOT publish is missing an expected Avalonia native runtime library."
+          }
+          Get-ChildItem -LiteralPath $publish -File | Format-Table Name, Length
+
+      - name: Run published LMDB smoke
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "papertodo-aot"
+          $executables = @(Get-ChildItem -LiteralPath $publish -Filter *.exe -File)
+          if ($executables.Count -ne 1) {
+            throw "Native AOT smoke requires exactly one application executable; found $($executables.Count)."
+          }
+          $exe = $executables[0]
+          & $exe.FullName --aot-smoke-lmdb
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dependents = & dumpbin /dependents $exe.FullName
+          $dependents | Write-Output
+          if ($dependents -match 'papertodo_lmdb\.dll') {
+            throw "The Native AOT executable still imports papertodo_lmdb.dll."
+          }
+
+      - name: Run published editor data-safety checks
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "papertodo-aot"
+          $executables = @(Get-ChildItem -LiteralPath $publish -Filter *.exe -File)
+          if ($executables.Count -ne 1) {
+            throw "Native AOT editor check requires exactly one application executable; found $($executables.Count)."
+          }
+          $exe = $executables[0]
+          & $exe.FullName --check-paper-editor-safety
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run published Avalonia startup smoke
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP "papertodo-aot"
+          $executables = @(Get-ChildItem -LiteralPath $publish -Filter *.exe -File)
+          if ($executables.Count -ne 1) {
+            throw "Native AOT UI smoke requires exactly one application executable; found $($executables.Count)."
+          }
+          $process = Start-Process `
+            -FilePath $executables[0].FullName `
+            -ArgumentList '--aot-smoke-ui' `
+            -PassThru
+          if (-not $process.WaitForExit(15000)) {
+            $process.Kill($true)
+            throw "The published Avalonia UI smoke did not exit within 15 seconds."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "The published Avalonia UI smoke exited with code $($process.ExitCode)."
+          }
+
+      - name: Reject dynamic managed-code paths in Avalonia
+        run: |
+          $forbidden = @(
+            'AssemblyLoadContext',
+            'LoadFromAssemblyPath',
+            'Assembly.Load(',
+            'RegexOptions.Compiled',
+            'Type.GetTypeFromCLSID',
+            'Activator.CreateInstance',
+            '[DllImport',
+            '[ComImport',
+            'FinalReleaseComObject',
+            'RequiresUnreferencedCode',
+            'RequiresDynamicCode',
+            'DynamicDependency',
+            'UnconditionalSuppressMessage',
+            'TrimmerRootAssembly',
+            'IlcRootAssembly'
+          )
+          foreach ($pattern in $forbidden) {
+            $matches = git grep -n -F -- $pattern -- 'src/**/*.cs'
+            if ($matches) {
+              $matches | Write-Output
+              throw "Native AOT source contains forbidden runtime path: $pattern"
+            }
+          }

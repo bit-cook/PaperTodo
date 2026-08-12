@@ -71,7 +71,7 @@ public sealed partial class AppController
         var papers = DeepCapsulePapersInOrder();
         return EdgeCapsuleQueueCoordinator.Build(
             papers.Select(paper =>
-                new EdgeCapsuleQueueMember(paper, QueueKey(paper))),
+                new EdgeCapsuleQueueMember(paper.Id, QueueKey(paper))),
             State.UseCapsuleCollapseAll);
     }
 

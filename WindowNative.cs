@@ -1186,7 +1186,7 @@ internal static class WindowNative
         {
             var topLeft = WindowWorkAreaHelper.DeviceScreenPointToDip(new DeviceScreenPoint(nativeRect.Left, nativeRect.Top));
             var bottomRight = WindowWorkAreaHelper.DeviceScreenPointToDip(new DeviceScreenPoint(nativeRect.Right, nativeRect.Bottom));
-            bounds = new Rect(topLeft.ToPoint(), bottomRight.ToPoint());
+            bounds = new Rect(topLeft.ToWpfPoint(), bottomRight.ToWpfPoint());
             return true;
         }
 
@@ -1222,7 +1222,9 @@ internal static class WindowNative
             return target.TransformFromDevice.Transform(point);
         }
 
-        return WindowWorkAreaHelper.DeviceScreenPointToDip(DeviceScreenPoint.FromPoint(point)).ToPoint();
+        return WindowWorkAreaHelper
+            .DeviceScreenPointToDip(point.ToDeviceScreenPoint())
+            .ToWpfPoint();
     }
 
     public static void BeginWindowCaptionDrag(Window window)

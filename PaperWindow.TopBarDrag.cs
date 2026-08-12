@@ -117,8 +117,7 @@ public sealed partial class PaperWindow
         _topBarDrag = new TopBarDragState(
             handle,
             behavior,
-            DeviceScreenPoint.FromPoint(
-                PointToScreen(e.GetPosition(this))));
+            PointToScreen(e.GetPosition(this)).ToDeviceScreenPoint());
         handle.CaptureMouse();
         e.Handled = true;
     }
@@ -139,8 +138,8 @@ public sealed partial class PaperWindow
             return;
         }
 
-        var currentScreenPoint = DeviceScreenPoint.FromPoint(
-            PointToScreen(e.GetPosition(this)));
+        var currentScreenPoint = PointToScreen(e.GetPosition(this))
+            .ToDeviceScreenPoint();
         if (!state.IsDragging)
         {
             if (!WindowWorkAreaHelper.ExceedsDragThreshold(
@@ -213,8 +212,8 @@ public sealed partial class PaperWindow
 
         if (state.IsDragging && state.Feedback is { } feedback)
         {
-            var point = DeviceScreenPoint.FromPoint(
-                PointToScreen(e.GetPosition(this)));
+            var point = PointToScreen(e.GetPosition(this))
+                .ToDeviceScreenPoint();
             MoveTopBarDragFeedback(state, point);
             if (_topBarDrag == state)
             {

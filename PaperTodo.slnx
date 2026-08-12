@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/migration-baseline/">
+    <Project Path="PaperTodo.csproj" />
+    <Project Path="PaperTodo.Plugin.Abstractions/PaperTodo.Plugin.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/PaperTodo.Core/PaperTodo.Core.csproj" />
+    <Project Path="src/PaperTodo.PluginHost/PaperTodo.PluginHost.csproj" />
+    <Project Path="src/PaperTodo.Platform.Windows/PaperTodo.Platform.Windows.csproj" />
+    <Project Path="src/PaperTodo.Avalonia/PaperTodo.Avalonia.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="scripts/edge-refinement-tests/EdgeRefinementChecks.csproj" />
+    <Project Path="tests/PaperTodo.Core.Checks/PaperTodo.Core.Checks.csproj" />
+    <Project Path="tests/PaperTodo.ReminderPolicy.Checks/PaperTodo.ReminderPolicy.Checks.csproj" />
+    <Project Path="tests/PaperTodo.PluginHost.Checks/PaperTodo.PluginHost.Checks.csproj" />
+  </Folder>
+</Solution>

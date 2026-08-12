@@ -15,8 +15,8 @@ public static class PaperLayoutDefaults
     public const double MinHeight = 120;
     public const double TopBarHeight = 23.5;
 
-    public const double CapsuleWidth = 92; // 包含阴影边框边距
-    public const double CapsuleHeight = 46;
+    public const double CapsuleWidth = EdgeCapsuleProductMetrics.MinimumFloatingWidthDip; // 包含阴影边框边距
+    public const double CapsuleHeight = EdgeCapsuleProductMetrics.CompactHeightDip;
 
     public const double TodoDefaultWidth = 280;
     public const double TodoDefaultHeight = 340;
@@ -154,7 +154,7 @@ public static class TodoVisualSizes
         return size is Small ? Small : size is Large or ExtraLarge ? Large : Medium;
     }
 
-    public static TodoVisualMetrics Metrics(string? size)
+    public static TodoVisualMetrics Metrics(string? size, double scaleFactor = 1.0)
     {
         var metrics = Normalize(size) switch
         {
@@ -165,18 +165,21 @@ public static class TodoVisualSizes
 
         return metrics with
         {
-            TextFontSize = AppTypography.Scale(metrics.TextFontSize),
-            TextVerticalPadding = AppTypography.Scale(metrics.TextVerticalPadding),
-            AppendMinHeight = AppTypography.Scale(metrics.AppendMinHeight),
-            AppendGlyphFontSize = AppTypography.Scale(metrics.AppendGlyphFontSize),
-            TrashGlyphFontSize = AppTypography.Scale(metrics.TrashGlyphFontSize),
-            LinkedPaperNameFontSize = AppTypography.Scale(metrics.LinkedPaperNameFontSize),
-            LinkedPaperIconFontSize = AppTypography.Scale(metrics.LinkedPaperIconFontSize),
-            CheckColumnWidth = AppTypography.Scale(metrics.CheckColumnWidth),
-            GhostTextFontSize = AppTypography.Scale(metrics.GhostTextFontSize),
-            RowMinHeight = AppTypography.Scale(metrics.RowMinHeight)
+            TextFontSize = Scale(metrics.TextFontSize, scaleFactor),
+            TextVerticalPadding = Scale(metrics.TextVerticalPadding, scaleFactor),
+            AppendMinHeight = Scale(metrics.AppendMinHeight, scaleFactor),
+            AppendGlyphFontSize = Scale(metrics.AppendGlyphFontSize, scaleFactor),
+            TrashGlyphFontSize = Scale(metrics.TrashGlyphFontSize, scaleFactor),
+            LinkedPaperNameFontSize = Scale(metrics.LinkedPaperNameFontSize, scaleFactor),
+            LinkedPaperIconFontSize = Scale(metrics.LinkedPaperIconFontSize, scaleFactor),
+            CheckColumnWidth = Scale(metrics.CheckColumnWidth, scaleFactor),
+            GhostTextFontSize = Scale(metrics.GhostTextFontSize, scaleFactor),
+            RowMinHeight = Scale(metrics.RowMinHeight, scaleFactor)
         };
     }
+
+    private static double Scale(double value, double scaleFactor) =>
+        Math.Round(value * OverallFontScales.Normalize(scaleFactor), 1, MidpointRounding.AwayFromZero);
 }
 
 public static class VisualTextSizes
@@ -200,9 +203,12 @@ public static class VisualTextSizes
         };
     }
 
-    public static double FontSize(double mediumSize, string? size)
+    public static double FontSize(double mediumSize, string? size, double scaleFactor = 1.0)
     {
-        return AppTypography.Scale(mediumSize + Correction(size));
+        return Math.Round(
+            (mediumSize + Correction(size)) * OverallFontScales.Normalize(scaleFactor),
+            1,
+            MidpointRounding.AwayFromZero);
     }
 }
 
@@ -247,22 +253,6 @@ public static class ExperimentalOpacityLevels
             Math.Round(clamped / Step, MidpointRounding.AwayFromZero) * Step,
             2,
             MidpointRounding.AwayFromZero);
-    }
-}
-
-public static class EdgeCapsuleHoverIntentSensitivities
-{
-    public const string VeryLow = "veryLow";
-    public const string Low = "low";
-    public const string Medium = "medium";
-    public const string High = "high";
-    public const string VeryHigh = "veryHigh";
-
-    public static string Normalize(string? sensitivity)
-    {
-        return sensitivity is VeryLow or Low or High or VeryHigh
-            ? sensitivity
-            : Medium;
     }
 }
 
@@ -438,7 +428,7 @@ public sealed class AppState
     public bool ShowLinkedPathExtensionOnly { get; set; }
     public bool HideLinkedPapersFromCapsules { get; set; }
     public bool RunLinkedScriptCapsulesOnClick { get; set; }
-    public int MaxTitleLength { get; set; } = PaperTitles.DefaultMaxTitleLength;
+    public int MaxTitleLength { get; set; } = PaperTitleRules.DefaultMaxTitleLength;
     public bool UseCapsuleCollapseAll { get; set; } = true;
     public bool CapsuleCollapseAllActive { get; set; }
     public Dictionary<string, bool> CapsuleCollapseAllActiveQueues { get; set; } = new();
@@ -601,11 +591,11 @@ public sealed class PaperItem
 
     [JsonInclude]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? LinkedPaperId { get; private set; }
+    public string? LinkedPaperId { get; internal set; }
 
     [JsonInclude]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? LinkedPath { get; private set; }
+    public string? LinkedPath { get; internal set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? ReminderAt { get; set; }

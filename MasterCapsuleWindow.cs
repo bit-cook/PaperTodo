@@ -49,7 +49,10 @@ public sealed class MasterCapsuleWindow : Window
     private readonly AppController _controller;
     private readonly DeepCapsuleContextMenuSession _contextMenuSession;
     private double MasterGlyphFontSize => AppTypography.Scale(12);
-    private double MasterLabelFontSize => VisualTextSizes.FontSize(12, _controller.State.CapsuleTextSize);
+    private double MasterLabelFontSize => VisualTextSizes.FontSize(
+        12,
+        _controller.State.CapsuleTextSize,
+        AppTypography.ScaleFactor);
     private FontFamily MasterLabelFontFamily =>
         AppTypography.FontFamilyFor(content: false, bold: _controller.State.CapsuleTextBold);
 
@@ -260,7 +263,7 @@ public sealed class MasterCapsuleWindow : Window
         _pill.PreviewMouseLeftButtonDown += (_, e) =>
         {
             _dragSession = new MasterDragSession(
-                DeviceScreenPoint.FromPoint(PointToScreen(e.GetPosition(this))),
+                PointToScreen(e.GetPosition(this)).ToDeviceScreenPoint(),
                 _controller.DeepCapsuleStartTopMarginForQueue(_queueMonitorDeviceName, _queueEdge));
             _gestureState = MasterGestureState.Pending;
             _pill.CaptureMouse();
@@ -282,7 +285,8 @@ public sealed class MasterCapsuleWindow : Window
                 return;
             }
 
-            var currentScreenPos = DeviceScreenPoint.FromPoint(PointToScreen(e.GetPosition(this)));
+            var currentScreenPos = PointToScreen(e.GetPosition(this))
+                .ToDeviceScreenPoint();
             if (!WindowWorkAreaHelper.TryGetMonitorGeometryForDevice(_queueMonitorDeviceName, this, out var geometry))
             {
                 return;
@@ -773,7 +777,7 @@ public sealed class MasterCapsuleWindow : Window
     public double AnchorTop => EdgeCapsuleLayout.TopForIndex(
         0,
         QueueStartTopMargin,
-        EdgeCapsuleLayout.LocalWorkAreaForQueue(_queueMonitorDeviceName),
+        EdgeCapsuleWpfWorkAreas.LocalWorkAreaForQueue(_queueMonitorDeviceName),
         QueueSlotCount,
         _controller.DeepCapsuleGap);
 

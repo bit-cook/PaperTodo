@@ -9,11 +9,6 @@ using PaperTodo.Plugin;
 
 namespace PaperTodo;
 
-internal static class PaperBodyProviderIds
-{
-    public const string Markdown = "builtin.markdown";
-}
-
 internal enum PaperBodyPluginKind
 {
     BuiltIn,

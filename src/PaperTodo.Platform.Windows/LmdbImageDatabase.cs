@@ -9,17 +9,14 @@ namespace PaperTodo;
 
 internal sealed class LmdbImageDatabase : IDisposable
 {
-    private const int StoreVersion = 1;
+    internal const int StoreVersion = 1;
     // Address-space ceiling only; LMDB grows the Windows data file incrementally.
     private const long MapSizeBytes = 256L * 1024 * 1024;
     private const int FileMode = 438; // 0666; ignored by LMDB on Windows.
 
     private static readonly byte[] StoreKey = Encoding.ASCII.GetBytes("!store");
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerOptions.Strict)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-    };
+    private static readonly LmdbImageJsonSerializerContext JsonContext =
+        CreateJsonContext();
 
     private readonly LmdbEnvironmentHandle _environment;
     private uint _metadataDatabase;
@@ -29,6 +26,18 @@ internal sealed class LmdbImageDatabase : IDisposable
     private LmdbImageDatabase(LmdbEnvironmentHandle environment)
     {
         _environment = environment;
+    }
+
+    private static LmdbImageJsonSerializerContext CreateJsonContext()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Strict)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            RespectNullableAnnotations = true,
+            RespectRequiredConstructorParameters = true
+        };
+        return new LmdbImageJsonSerializerContext(options);
     }
 
     internal static LmdbImageDatabase Open(string path)
@@ -210,12 +219,14 @@ internal sealed class LmdbImageDatabase : IDisposable
                 }
 
                 var key = ImageKey(image.Asset.Id);
-                var metadata = JsonSerializer.SerializeToUtf8Bytes(image.Asset, JsonOptions);
+                var metadata = JsonSerializer.SerializeToUtf8Bytes(
+                    image.Asset,
+                    JsonContext.NoteImageAsset);
                 Put(transaction, _metadataDatabase, key, metadata, LmdbNative.NoOverwrite);
                 Put(transaction, _blobDatabase, key, image.Bytes, LmdbNative.NoOverwrite);
             }
 
-            PutStore(transaction, new ImageStoreMetadata
+            PutStore(transaction, new LmdbImageStoreMetadata
             {
                 Version = StoreVersion,
                 NextImageNumber = nextImageNumber
@@ -286,7 +297,7 @@ internal sealed class LmdbImageDatabase : IDisposable
 
             if (!TryGet(transaction, _metadataDatabase, StoreKey, out var storeBytes))
             {
-                PutStore(transaction, new ImageStoreMetadata());
+                PutStore(transaction, new LmdbImageStoreMetadata());
             }
             else
             {
@@ -301,9 +312,11 @@ internal sealed class LmdbImageDatabase : IDisposable
         }
     }
 
-    private ImageStoreMetadata DeserializeStore(byte[] bytes)
+    private LmdbImageStoreMetadata DeserializeStore(byte[] bytes)
     {
-        var store = JsonSerializer.Deserialize<ImageStoreMetadata>(bytes, JsonOptions)
+        var store = JsonSerializer.Deserialize(
+                bytes,
+                JsonContext.LmdbImageStoreMetadata)
             ?? throw new InvalidDataException("The image database store metadata is empty.");
         if (store.Version != StoreVersion)
         {
@@ -322,7 +335,9 @@ internal sealed class LmdbImageDatabase : IDisposable
     {
         try
         {
-            var deserialized = JsonSerializer.Deserialize<NoteImageAsset>(bytes, JsonOptions);
+            var deserialized = JsonSerializer.Deserialize(
+                bytes,
+                JsonContext.NoteImageAsset);
             if (deserialized == null)
             {
                 asset = null!;
@@ -344,12 +359,14 @@ internal sealed class LmdbImageDatabase : IDisposable
         }
     }
 
-    private void PutStore(IntPtr transaction, ImageStoreMetadata store)
+    private void PutStore(IntPtr transaction, LmdbImageStoreMetadata store)
         => Put(
             transaction,
             _metadataDatabase,
             StoreKey,
-            JsonSerializer.SerializeToUtf8Bytes(store, JsonOptions),
+            JsonSerializer.SerializeToUtf8Bytes(
+                store,
+                JsonContext.LmdbImageStoreMetadata),
             flags: 0);
 
     private IntPtr BeginTransaction(bool write)
@@ -494,12 +511,18 @@ internal sealed class LmdbImageDatabase : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
+}
 
-    private sealed class ImageStoreMetadata
-    {
-        public int Version { get; set; } = StoreVersion;
-        public int NextImageNumber { get; set; } = 1;
-    }
+internal sealed class LmdbImageStoreMetadata
+{
+    public int Version { get; set; } = LmdbImageDatabase.StoreVersion;
+    public int NextImageNumber { get; set; } = 1;
+}
+
+[JsonSerializable(typeof(NoteImageAsset))]
+[JsonSerializable(typeof(LmdbImageStoreMetadata))]
+internal sealed partial class LmdbImageJsonSerializerContext : JsonSerializerContext
+{
 }
 
 internal sealed record LmdbImageIndex(

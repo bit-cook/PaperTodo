@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Windows;
 
 namespace PaperTodo;
 
@@ -74,33 +73,6 @@ public static class EdgeCapsuleLayout
             || (c >= 0xFFE0 && c <= 0xFFE6);  // Fullwidth signs
     }
 
-    // Work area of a specific monitor device (empty => primary), with nearest-monitor fallback.
-    // Per-queue geometry resolves through this so each (monitor, edge) queue is independent.
-    public static Rect WorkAreaForQueue(string? monitorDeviceName)
-    {
-        var normalizedMonitor = WindowWorkAreaHelper.NormalizeQueueMonitorDeviceName(monitorDeviceName);
-        if (!string.IsNullOrEmpty(normalizedMonitor))
-        {
-            var resolved = WindowWorkAreaHelper.WorkAreaForDevice(normalizedMonitor);
-            if (resolved.HasValue)
-            {
-                return resolved.Value;
-            }
-        }
-
-        return SystemParameters.WorkArea;
-    }
-
-    // Edge HWNDs lay out in the target monitor's own 96-DPI coordinate space, then convert the
-    // finished rectangle to physical pixels. This keeps slot height, gap and width consistent on
-    // mixed-scale displays without mixing the primary monitor's desktop coordinates into sizing.
-    internal static Rect LocalWorkAreaForQueue(string? monitorDeviceName)
-    {
-        return WindowWorkAreaHelper.TryGetMonitorGeometryForDevice(monitorDeviceName, out var geometry)
-            ? geometry.LocalWorkAreaDip
-            : new Rect(0, 0, SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height);
-    }
-
     // ── Pure per-queue geometry: same math as the static-anchor methods below, but every
     // input (edge + work area) is explicit, so N independent queues can each compute their own
     // docked positions without sharing one global anchor.
@@ -108,7 +80,7 @@ public static class EdgeCapsuleLayout
     public static double TopForIndex(
         int index,
         double startTopMargin,
-        Rect area,
+        DipRect area,
         int slotCount,
         double gap)
     {
@@ -119,17 +91,18 @@ public static class EdgeCapsuleLayout
             Math.Max(0, index) * SlotHeight(gap);
     }
 
-    public static double MaxStartTopMarginForCount(int slotCount, Rect area, double gap)
+    public static double MaxStartTopMarginForCount(int slotCount, DipRect area, double gap)
     {
         var count = Math.Max(1, slotCount);
-        var stackHeight = PaperLayoutDefaults.CapsuleHeight + (count - 1) * SlotHeight(gap);
+        var stackHeight = EdgeCapsuleProductMetrics.CompactHeightDip +
+            (count - 1) * SlotHeight(gap);
         var maxMargin = area.Height - stackHeight - TopMargin;
         return Math.Max(TopMargin, maxMargin);
     }
 
     public static double NormalizeStartTopMargin(
         double value,
-        Rect area,
+        DipRect area,
         int slotCount,
         double gap)
     {
@@ -143,5 +116,5 @@ public static class EdgeCapsuleLayout
     }
 
     public static double SlotHeight(double gap) =>
-        PaperLayoutDefaults.CapsuleHeight + Math.Max(0, gap);
+        EdgeCapsuleProductMetrics.CompactHeightDip + Math.Max(0, gap);
 }
