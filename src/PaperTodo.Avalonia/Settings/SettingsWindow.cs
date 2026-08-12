@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
+using Avalonia.Media;
 using PaperTodo.Avalonia.Localization;
 
 namespace PaperTodo.Avalonia.Settings;
@@ -91,8 +93,8 @@ internal sealed class SettingsWindow : Window
 
         _error = new TextBlock
         {
-            Foreground = Avalonia.Media.Brushes.IndianRed,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Foreground = Brushes.IndianRed,
+            TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -173,7 +175,7 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(new TextBlock
         {
             Text = text.ShortcutHint,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            TextWrapping = TextWrapping.Wrap,
             Opacity = 0.72,
             Margin = new Thickness(0, 0, 0, 8)
         });
@@ -189,7 +191,7 @@ internal sealed class SettingsWindow : Window
             var gesture = new TextBox
             {
                 Text = _state.GlobalHotkeys.TryGetValue(definition.Id, out var value) ? value : definition.DefaultGesture,
-                Watermark = "Ctrl+Alt+…",
+                PlaceholderText = "Ctrl+Alt+…",
                 MinWidth = 190
             };
             var row = new Grid
@@ -303,14 +305,14 @@ internal sealed class SettingsWindow : Window
     private static ScrollViewer Scroller(Control content) => new()
     {
         Content = content,
-        VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     };
 
     private static TextBlock Section(string text) => new()
     {
         Text = text,
         FontSize = 16,
-        FontWeight = Avalonia.Media.FontWeight.SemiBold,
+        FontWeight = FontWeight.SemiBold,
         Margin = new Thickness(0, 12, 0, 4)
     };
 
