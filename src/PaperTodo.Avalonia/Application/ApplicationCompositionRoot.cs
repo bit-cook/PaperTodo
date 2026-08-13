@@ -23,6 +23,7 @@ internal static class ApplicationCompositionRoot
             stateStorePlatform,
             paperSurfaces,
             edgeSurfaces);
+        paperSurfaces.LinkedPaperRequested += workspace.ActivateLinkedPaperFromQuickLaunch;
 
         return new ApplicationLifecycleController(
             desktop,

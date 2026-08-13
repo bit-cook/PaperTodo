@@ -208,7 +208,12 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
         topBar.Child = topBarGrid;
         shell.Children.Add(topBar);
 
-        _editor = new PaperEditorControl(Paper, _state, _palette, () => Changed?.Invoke());
+        _editor = new PaperEditorControl(
+            Paper,
+            _state,
+            _palette,
+            () => Changed?.Invoke(),
+            paperId => LinkedPaperRequested?.Invoke(paperId));
         shell.Children.Add(_editor);
         Grid.SetRow(_editor, 1);
 
@@ -240,6 +245,7 @@ internal sealed class PaperSurfaceWindow : Window, IPaperSurface
     public event Action? DeleteRequested;
     public event Action? NewTodoRequested;
     public event Action? NewNoteRequested;
+    public event Action<string>? LinkedPaperRequested;
 
     public void ApplyDescriptor(PaperSurfaceDescriptor descriptor)
     {

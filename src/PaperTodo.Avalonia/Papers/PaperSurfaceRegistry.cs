@@ -10,6 +10,8 @@ internal sealed class PaperSurfaceRegistry : IDisposable
 
     public IReadOnlyCollection<IPaperSurface> Surfaces => _surfaces.Values;
 
+    public event Action<string>? LinkedPaperRequested;
+
     public PaperSurfaceWindow Create(PaperSurfaceDescriptor descriptor)
     {
         Dispatcher.UIThread.VerifyAccess();
@@ -20,6 +22,7 @@ internal sealed class PaperSurfaceRegistry : IDisposable
         }
 
         var surface = new PaperSurfaceWindow(descriptor);
+        surface.LinkedPaperRequested += paperId => LinkedPaperRequested?.Invoke(paperId);
         surface.Closed += (_, _) => _surfaces.Remove(descriptor.PaperId);
         _surfaces.Add(descriptor.PaperId, surface);
         if (descriptor.IsVisible)
@@ -83,6 +86,7 @@ internal sealed class PaperSurfaceRegistry : IDisposable
         }
 
         _disposed = true;
+        LinkedPaperRequested = null;
         if (Dispatcher.UIThread.CheckAccess())
         {
             CloseAll();

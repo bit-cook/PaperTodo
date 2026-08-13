@@ -13,13 +13,19 @@ internal sealed class PaperEditorControl : Grid
         PaperData paper,
         AppState state,
         PaperThemePalette palette,
-        Action changed)
+        Action changed,
+        Action<string>? openLinkedPaper = null)
     {
         Background = Brushes.Transparent;
 
         if (paper.Type == PaperTypes.Todo)
         {
-            _body = new TodoEditorControl(paper, state, palette, changed);
+            _body = new TodoEditorControl(
+                paper,
+                state,
+                palette,
+                changed,
+                openLinkedPaper ?? (_ => { }));
         }
         else if (PaperTextCodec.CanEditBody(paper))
         {
