@@ -24,6 +24,7 @@ internal static class ApplicationCompositionRoot
             paperSurfaces,
             edgeSurfaces);
         paperSurfaces.LinkedPaperRequested += workspace.ActivateLinkedPaperFromQuickLaunch;
+        paperSurfaces.Disposing += AvaloniaNoteImageRuntime.DisposeShared;
         edgeSurfaces.ReorderRequested += workspace.ReorderEdgeCapsuleWithinQueue;
         workspace.AttachVirtualDesktopRuntime();
 
