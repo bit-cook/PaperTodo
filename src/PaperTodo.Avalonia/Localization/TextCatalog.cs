@@ -19,7 +19,8 @@ internal static class TextCatalog
                 "只注册 Avalonia 当前已经实现的通用快捷键；贴边和实验室快捷键保留原配置，不会被此页覆盖。", "快捷键无效",
                 "Todo 提醒", "快速提醒（分钟）", "Markdown 模式", "用外部编辑器打开",
                 "打开关联", "关联纸片", "关联文件", "关联文件夹", "清除关联", "目标不存在",
-                "插入图片", "图片文件", "当前环境无法选择本地图片"),
+                "插入图片", "图片文件", "当前环境无法选择本地图片",
+                "虚拟桌面", "启用虚拟桌面集成", "显示纸片时移动到当前桌面", "从胶囊激活时移动到当前桌面"),
             ["en"] = new(
                 "PaperTodo", "Show all", "Hide all", "Toggle visibility", "New Todo", "New Note", "Exit",
                 "Move paper", "Hide paper", "Collapse to capsule", "Delete paper", "Always on top", "Add todo", "Delete todo",
@@ -32,7 +33,8 @@ internal static class TextCatalog
                 "Only general shortcuts already implemented by Avalonia are edited here. Edge and Labs bindings are preserved.", "Invalid shortcut",
                 "Todo reminders", "Quick reminder (minutes)", "Markdown mode", "Open in external editor",
                 "Open linked target", "Link paper", "Link file", "Link folder", "Clear link", "Target unavailable",
-                "Insert image", "Image files", "Local image picking is unavailable"),
+                "Insert image", "Image files", "Local image picking is unavailable",
+                "Virtual desktops", "Enable virtual desktop integration", "Move papers to the current desktop when shown", "Move papers to the current desktop on capsule activation"),
             ["ja"] = new(
                 "PaperTodo", "すべて表示", "すべて非表示", "表示を切り替え", "Todo を追加", "Note を追加", "終了",
                 "付箋を移動", "付箋を隠す", "カプセルに折りたたむ", "付箋を削除", "常に手前", "Todo を追加", "Todo を削除",
@@ -45,7 +47,8 @@ internal static class TextCatalog
                 "Avalonia で実装済みの一般ショートカットのみ編集します。エッジ/Labs 設定は保持されます。", "無効なショートカット",
                 "Todo リマインダー", "クイックリマインダー（分）", "Markdown モード", "外部エディターで開く",
                 "リンク先を開く", "付箋を関連付け", "ファイルを関連付け", "フォルダーを関連付け", "リンク解除", "リンク先がありません",
-                "画像を挿入", "画像ファイル", "ローカル画像を選択できません"),
+                "画像を挿入", "画像ファイル", "ローカル画像を選択できません",
+                "仮想デスクトップ", "仮想デスクトップ連携を有効化", "表示時に現在のデスクトップへ移動", "カプセルから開く時に現在のデスクトップへ移動"),
             ["ko"] = new(
                 "PaperTodo", "모두 표시", "모두 숨기기", "표시 전환", "새 Todo", "새 Note", "종료",
                 "메모 이동", "메모 숨기기", "캡슐로 접기", "메모 삭제", "항상 위", "할 일 추가", "할 일 삭제",
@@ -58,7 +61,8 @@ internal static class TextCatalog
                 "Avalonia에서 구현된 일반 단축키만 편집합니다. 가장자리/Labs 설정은 유지됩니다.", "잘못된 단축키",
                 "Todo 알림", "빠른 알림(분)", "Markdown 모드", "외부 편집기로 열기",
                 "연결 대상 열기", "메모 연결", "파일 연결", "폴더 연결", "연결 해제", "연결 대상을 찾을 수 없음",
-                "이미지 삽입", "이미지 파일", "로컬 이미지를 선택할 수 없습니다")
+                "이미지 삽입", "이미지 파일", "로컬 이미지를 선택할 수 없습니다",
+                "가상 데스크톱", "가상 데스크톱 연동 사용", "표시할 때 현재 데스크톱으로 이동", "캡슐에서 열 때 현재 데스크톱으로 이동")
         };
 
     public static TextSet Current
@@ -136,4 +140,8 @@ internal sealed record TextSet(
     string LinkedTargetUnavailable,
     string InsertImage,
     string ImageFiles,
-    string ImageImportUnavailable);
+    string ImageImportUnavailable,
+    string VirtualDesktops,
+    string EnableVirtualDesktops,
+    string VirtualDesktopMoveOnShow,
+    string VirtualDesktopMoveOnCapsuleActivation);
