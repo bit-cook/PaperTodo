@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using PaperTodo.Avalonia.Localization;
 using System.Diagnostics;
 
@@ -20,6 +21,7 @@ internal sealed class TodoEditorControl : Grid
     private readonly Action<string> _openLinkedPaper;
     private readonly StackPanel _rows = new() { Spacing = 1 };
     private readonly List<Border> _rowControls = [];
+    private readonly Dictionary<string, TextBox> _editors = new(StringComparer.Ordinal);
     private readonly List<List<PaperItem>> _undo = [];
     private readonly List<List<PaperItem>> _redo = [];
     private string? _dragItemId;
@@ -41,13 +43,22 @@ internal sealed class TodoEditorControl : Grid
         _changed = changed;
         _openLinkedPaper = openLinkedPaper;
 
+        // Match the long-standing WPF contract: a Todo paper always has one writable row.
+        if (_paper.Items.Count == 0)
+        {
+            _paper.Items.Add(new PaperItem { Order = 0 });
+        }
+        TodoRules.NormalizeOrders(_paper.Items);
+
         RowDefinitions = new RowDefinitions("*,Auto");
         Background = Brushes.Transparent;
 
         var scroller = new ScrollViewer
         {
             Content = _rows,
-            Padding = new Thickness(6, 5, 6, 3)
+            Padding = new Thickness(6, 5, 6, 3),
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
         };
         Children.Add(scroller);
 
@@ -56,7 +67,7 @@ internal sealed class TodoEditorControl : Grid
         {
             Content = "+",
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
             MinHeight = metrics.AppendMinHeight,
             Padding = new Thickness(10, 2),
             Background = Brushes.Transparent,
@@ -73,37 +84,45 @@ internal sealed class TodoEditorControl : Grid
         Grid.SetRow(add, 1);
 
         ContextMenu = BuildContextMenu();
-        RefreshFromModel();
+        RebuildRows();
     }
 
-    public void RefreshFromModel()
+    public void RefreshFromModel() => RebuildRows();
+
+    private void RebuildRows(
+        string? focusItemId = null,
+        int? caretIndex = null)
     {
         _refreshing = true;
         try
         {
+            if (_paper.Items.Count == 0)
+            {
+                var blank = new PaperItem { Order = 0 };
+                _paper.Items.Add(blank);
+                focusItemId ??= blank.Id;
+                caretIndex ??= 0;
+            }
+
+            TodoRules.NormalizeOrders(_paper.Items);
             _rows.Children.Clear();
             _rowControls.Clear();
+            _editors.Clear();
             foreach (var item in _paper.Items.OrderBy(item => item.Order))
             {
                 var row = CreateRow(item);
                 _rowControls.Add(row);
                 _rows.Children.Add(row);
             }
-
-            if (_paper.Items.Count == 0)
-            {
-                _rows.Children.Add(new TextBlock
-                {
-                    Text = TextCatalog.Current.TodoPlaceholder,
-                    Foreground = _palette.WeakTextBrush,
-                    Margin = new Thickness(8, 6),
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
         }
         finally
         {
             _refreshing = false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(focusItemId))
+        {
+            FocusItemLater(focusItemId, caretIndex);
         }
     }
 
@@ -116,7 +135,8 @@ internal sealed class TodoEditorControl : Grid
             Background = Brushes.Transparent,
             MinHeight = metrics.RowMinHeight,
             Padding = new Thickness(2, 0),
-            Opacity = item.Done ? 0.58 : 1
+            Opacity = item.Done ? 0.58 : 1,
+            Tag = item.Id
         };
         var grid = new Grid
         {
@@ -126,7 +146,7 @@ internal sealed class TodoEditorControl : Grid
 
         var drag = new Border
         {
-            Width = 15,
+            Width = 17,
             Background = Brushes.Transparent,
             Child = new TextBlock
             {
@@ -150,48 +170,7 @@ internal sealed class TodoEditorControl : Grid
             Margin = new Thickness(1, 0, 4, 0),
             Foreground = _palette.ActiveBrush
         };
-        check.IsCheckedChanged += (_, _) =>
-        {
-            if (_refreshing)
-            {
-                return;
-            }
-
-            var done = check.IsChecked == true;
-            if (item.Done == done)
-            {
-                return;
-            }
-
-            PushUndo();
-            item.Done = done;
-            if (done)
-            {
-                item.ReminderAt = null;
-                item.ReminderTriggered = false;
-            }
-
-            if (done && _state.AutoClearCompletedTodos)
-            {
-                _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
-                if (_paper.Items.Count == 0)
-                {
-                    _paper.Items.Add(new PaperItem());
-                }
-                TodoRules.NormalizeOrders(_paper.Items);
-                RefreshFromModel();
-            }
-            else if (_state.AutoMoveCompletedTodosToBottom)
-            {
-                MoveAfterDoneChange(item, done);
-                RefreshFromModel();
-            }
-            else
-            {
-                row.Opacity = done ? 0.58 : 1;
-            }
-            _changed();
-        };
+        check.IsCheckedChanged += (_, _) => ApplyDoneChange(item, check.IsChecked == true, row);
         grid.Children.Add(check);
         Grid.SetColumn(check, 1);
 
@@ -199,6 +178,8 @@ internal sealed class TodoEditorControl : Grid
         {
             Text = item.Text ?? string.Empty,
             MaxLength = 5000,
+            AcceptsReturn = false,
+            AcceptsTab = false,
             Background = Brushes.Transparent,
             BorderThickness = default,
             Padding = new Thickness(2, metrics.TextVerticalPadding),
@@ -206,8 +187,10 @@ internal sealed class TodoEditorControl : Grid
             FontSize = metrics.TextFontSize,
             FontWeight = _state.TodoTextBold ? FontWeight.SemiBold : FontWeight.Normal,
             VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
             TextWrapping = TextWrapping.Wrap
         };
+        _editors[item.Id] = editor;
         editor.TextChanged += (_, _) =>
         {
             if (_refreshing)
@@ -233,7 +216,17 @@ internal sealed class TodoEditorControl : Grid
         {
             if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             {
-                InsertAfter(item);
+                SplitAfterCaret(item, editor);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Back &&
+                string.IsNullOrEmpty(editor.Text) &&
+                editor.CaretIndex == 0 &&
+                _paper.Items.Count > 1)
+            {
+                RemoveEmptyItemAndFocusPrevious(item);
                 e.Handled = true;
                 return;
             }
@@ -314,6 +307,178 @@ internal sealed class TodoEditorControl : Grid
             }
         };
         return row;
+    }
+
+    private void ApplyDoneChange(PaperItem item, bool done, Border row)
+    {
+        if (_refreshing || item.Done == done)
+        {
+            return;
+        }
+
+        PushUndo();
+        item.Done = done;
+        if (done)
+        {
+            item.ReminderAt = null;
+            item.ReminderTriggered = false;
+        }
+
+        if (done && _state.AutoClearCompletedTodos)
+        {
+            var ordered = OrderedItems();
+            var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
+            _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
+            var focus = EnsureWritableItemAfterRemoval(ordered, index, item.Id);
+            RebuildRows(focus?.Id);
+        }
+        else if (_state.AutoMoveCompletedTodosToBottom)
+        {
+            MoveAfterDoneChange(item, done);
+            RebuildRows(item.Id);
+        }
+        else
+        {
+            row.Opacity = done ? 0.58 : 1;
+        }
+        _changed();
+    }
+
+    private void AddItem()
+    {
+        PushUndo();
+        var item = new PaperItem { Order = _paper.Items.Count };
+        _paper.Items.Add(item);
+        TodoRules.NormalizeOrders(_paper.Items);
+        RebuildRows(item.Id, 0);
+        _changed();
+    }
+
+    private void SplitAfterCaret(PaperItem item, TextBox editor)
+    {
+        PushUndo();
+        var text = editor.Text ?? string.Empty;
+        var caret = Math.Clamp(editor.CaretIndex, 0, text.Length);
+        var before = text[..caret];
+        var after = text[caret..];
+        item.Text = before;
+
+        var ordered = OrderedItems();
+        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
+        var created = new PaperItem { Text = after };
+        ordered.Insert(Math.Max(0, index + 1), created);
+        _paper.Items = ordered;
+        TodoRules.NormalizeOrders(_paper.Items);
+        RebuildRows(created.Id, 0);
+        _changed();
+    }
+
+    private void RemoveEmptyItemAndFocusPrevious(PaperItem item)
+    {
+        PushUndo();
+        var ordered = OrderedItems();
+        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
+        if (index <= 0)
+        {
+            return;
+        }
+
+        var previous = ordered[index - 1];
+        ordered.RemoveAt(index);
+        _paper.Items = ordered;
+        TodoRules.NormalizeOrders(_paper.Items);
+        RebuildRows(previous.Id, previous.Text?.Length ?? 0);
+        _changed();
+    }
+
+    private void RemoveItem(PaperItem item)
+    {
+        PushUndo();
+        var ordered = OrderedItems();
+        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
+        _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
+        var focus = EnsureWritableItemAfterRemoval(ordered, index, item.Id);
+        TodoRules.NormalizeOrders(_paper.Items);
+        RebuildRows(focus?.Id);
+        _changed();
+    }
+
+    private PaperItem? EnsureWritableItemAfterRemoval(
+        IReadOnlyList<PaperItem> previousOrder,
+        int previousIndex,
+        string removedId)
+    {
+        if (_paper.Items.Count == 0)
+        {
+            var blank = new PaperItem { Order = 0 };
+            _paper.Items.Add(blank);
+            return blank;
+        }
+
+        var remaining = _paper.Items.OrderBy(candidate => candidate.Order).ToList();
+        var preferred = Math.Clamp(previousIndex, 0, remaining.Count - 1);
+        return remaining[preferred];
+    }
+
+    private void MoveItem(PaperItem item, int offset)
+    {
+        var ordered = OrderedItems();
+        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var target = Math.Clamp(index + offset, 0, ordered.Count - 1);
+        if (target == index)
+        {
+            return;
+        }
+
+        PushUndo();
+        ordered.RemoveAt(index);
+        ordered.Insert(target, item);
+        _paper.Items = ordered;
+        TodoRules.NormalizeOrders(_paper.Items);
+        RebuildRows(item.Id);
+        _changed();
+    }
+
+    private void MoveAfterDoneChange(PaperItem changedItem, bool done)
+    {
+        var ordered = OrderedItems();
+        ordered.RemoveAll(item => item.Id == changedItem.Id);
+        if (done)
+        {
+            ordered.Add(changedItem);
+        }
+        else
+        {
+            var firstDone = ordered.FindIndex(item => item.Done);
+            ordered.Insert(firstDone < 0 ? ordered.Count : firstDone, changedItem);
+        }
+        _paper.Items = ordered;
+        TodoRules.NormalizeOrders(_paper.Items);
+    }
+
+    private List<PaperItem> OrderedItems() =>
+        _paper.Items.OrderBy(candidate => candidate.Order).ToList();
+
+    private void FocusItemLater(string itemId, int? caretIndex = null)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_editors.TryGetValue(itemId, out var editor))
+            {
+                return;
+            }
+
+            editor.Focus();
+            editor.CaretIndex = Math.Clamp(
+                caretIndex ?? (editor.Text?.Length ?? 0),
+                0,
+                editor.Text?.Length ?? 0);
+        }, DispatcherPriority.Input);
     }
 
     private Button? CreateQuickLaunchButton(PaperItem item, TodoVisualMetrics metrics)
@@ -417,13 +582,12 @@ internal sealed class TodoEditorControl : Grid
                 paperItems.Add(candidate);
             }
 
-            var linkPaper = new MenuItem
+            items.Add(new MenuItem
             {
                 Header = text.LinkPaper,
                 ItemsSource = paperItems,
                 IsEnabled = paperItems.Count > 0
-            };
-            items.Add(linkPaper);
+            });
         }
 
         var linkFile = new MenuItem { Header = text.LinkFile };
@@ -449,10 +613,7 @@ internal sealed class TodoEditorControl : Grid
         undo.Click += (_, _) => Undo();
         var redo = new MenuItem { Header = "Redo" };
         redo.Click += (_, _) => Redo();
-        return new ContextMenu
-        {
-            ItemsSource = new object[] { undo, redo }
-        };
+        return new ContextMenu { ItemsSource = new object[] { undo, redo } };
     }
 
     private void OpenLinkedTarget(PaperItem item)
@@ -466,7 +627,6 @@ internal sealed class TodoEditorControl : Grid
             }
             return;
         }
-
         OpenShellPath(item.LinkedPath);
     }
 
@@ -477,7 +637,6 @@ internal sealed class TodoEditorControl : Grid
             return _state.Papers.Any(candidate =>
                 string.Equals(candidate.Id, item.LinkedPaperId, StringComparison.Ordinal));
         }
-
         return !string.IsNullOrWhiteSpace(item.LinkedPath) &&
             (File.Exists(item.LinkedPath) || Directory.Exists(item.LinkedPath));
     }
@@ -489,17 +648,15 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         PushUndo();
         item.LinkPaper(paperId);
-        RefreshFromModel();
+        RebuildRows(item.Id);
         _changed();
     }
 
     private async Task PickLinkedFileAsync(PaperItem item)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        var provider = topLevel?.StorageProvider;
+        var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (provider?.CanOpen != true)
         {
             return;
@@ -514,21 +671,17 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         using var file = selected[0];
         var path = file.TryGetLocalPath();
-        if (string.IsNullOrWhiteSpace(path))
+        if (!string.IsNullOrWhiteSpace(path))
         {
-            return;
+            SetLinkedPath(item, path);
         }
-
-        SetLinkedPath(item, path);
     }
 
     private async Task PickLinkedFolderAsync(PaperItem item)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        var provider = topLevel?.StorageProvider;
+        var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (provider?.CanPickFolder != true)
         {
             return;
@@ -543,15 +696,12 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         using var folder = selected[0];
         var path = folder.TryGetLocalPath();
-        if (string.IsNullOrWhiteSpace(path))
+        if (!string.IsNullOrWhiteSpace(path))
         {
-            return;
+            SetLinkedPath(item, path);
         }
-
-        SetLinkedPath(item, path);
     }
 
     private void SetLinkedPath(PaperItem item, string path)
@@ -561,10 +711,9 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         PushUndo();
         item.LinkPath(path);
-        RefreshFromModel();
+        RebuildRows(item.Id);
         _changed();
     }
 
@@ -575,10 +724,9 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         PushUndo();
         item.ClearQuickLaunch();
-        RefreshFromModel();
+        RebuildRows(item.Id);
         _changed();
     }
 
@@ -589,14 +737,9 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = path,
-                UseShellExecute = true
-            });
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
         }
         catch (Exception exception)
         {
@@ -611,9 +754,7 @@ internal sealed class TodoEditorControl : Grid
     {
         try
         {
-            var trimmed = path.TrimEnd(
-                Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar);
+            var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var name = Path.GetFileName(trimmed);
             return string.IsNullOrWhiteSpace(name) ? path : name;
         }
@@ -635,7 +776,6 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         _dragItemId = item.Id;
         _dragStartPoint = e.GetPosition(_rows);
         _dragInsertIndex = item.Order;
@@ -650,19 +790,16 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         var point = e.GetPosition(_rows);
-        if (!_dragStarted && Math.Abs(point.Y - _dragStartPoint.Y) < 4)
+        if (!_dragStarted && Math.Abs(point.Y - _dragStartPoint.Y) < 5)
         {
             return;
         }
-
         if (!_dragStarted)
         {
             PushUndo();
             _dragStarted = true;
         }
-
         _dragInsertIndex = ResolveInsertionIndex(point.Y);
         for (var index = 0; index < _rowControls.Count; index++)
         {
@@ -680,27 +817,24 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         var itemId = _dragItemId;
         var started = _dragStarted;
         var insertion = _dragInsertIndex;
         _dragItemId = null;
         _dragStarted = false;
         _dragInsertIndex = -1;
-
         if (!started)
         {
             return;
         }
 
-        var ordered = _paper.Items.OrderBy(item => item.Order).ToList();
+        var ordered = OrderedItems();
         var originalIndex = ordered.FindIndex(item => string.Equals(item.Id, itemId, StringComparison.Ordinal));
         if (originalIndex < 0)
         {
-            RefreshFromModel();
+            RebuildRows();
             return;
         }
-
         var item = ordered[originalIndex];
         ordered.RemoveAt(originalIndex);
         var target = Math.Clamp(insertion, 0, ordered.Count + 1);
@@ -712,7 +846,7 @@ internal sealed class TodoEditorControl : Grid
         ordered.Insert(target, item);
         _paper.Items = ordered;
         TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
+        RebuildRows(item.Id);
         _changed();
         e.Handled = true;
     }
@@ -747,7 +881,7 @@ internal sealed class TodoEditorControl : Grid
             item.ReminderAt = DateTimeOffset.Now.AddMinutes(minutes);
             item.ReminderTriggered = false;
         }
-        RefreshFromModel();
+        RebuildRows(item.Id);
         _changed();
     }
 
@@ -757,85 +891,11 @@ internal sealed class TodoEditorControl : Grid
         {
             return reminderAt.ToLocalTime().ToString("g");
         }
-
         var minutes = Math.Clamp(
             _state.ExperimentalTodoReminderQuickMinutes,
             ExperimentalTodoReminderOptions.MinimumQuickMinutes,
             ExperimentalTodoReminderOptions.MaximumQuickMinutes);
         return $"+{minutes} min";
-    }
-
-    private void AddItem()
-    {
-        PushUndo();
-        var item = new PaperItem { Order = _paper.Items.Count };
-        _paper.Items.Add(item);
-        TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
-        _changed();
-    }
-
-    private void InsertAfter(PaperItem item)
-    {
-        PushUndo();
-        var ordered = _paper.Items.OrderBy(candidate => candidate.Order).ToList();
-        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
-        var created = new PaperItem();
-        ordered.Insert(Math.Max(0, index + 1), created);
-        _paper.Items = ordered;
-        TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
-        _changed();
-    }
-
-    private void RemoveItem(PaperItem item)
-    {
-        PushUndo();
-        _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
-        TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
-        _changed();
-    }
-
-    private void MoveItem(PaperItem item, int offset)
-    {
-        var ordered = _paper.Items.OrderBy(candidate => candidate.Order).ToList();
-        var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
-        if (index < 0)
-        {
-            return;
-        }
-
-        var target = Math.Clamp(index + offset, 0, ordered.Count - 1);
-        if (target == index)
-        {
-            return;
-        }
-
-        PushUndo();
-        ordered.RemoveAt(index);
-        ordered.Insert(target, item);
-        _paper.Items = ordered;
-        TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
-        _changed();
-    }
-
-    private void MoveAfterDoneChange(PaperItem changedItem, bool done)
-    {
-        var ordered = _paper.Items.OrderBy(item => item.Order).ToList();
-        ordered.RemoveAll(item => item.Id == changedItem.Id);
-        if (done)
-        {
-            ordered.Add(changedItem);
-        }
-        else
-        {
-            var firstDone = ordered.FindIndex(item => item.Done);
-            ordered.Insert(firstDone < 0 ? ordered.Count : firstDone, changedItem);
-        }
-        _paper.Items = ordered;
-        TodoRules.NormalizeOrders(_paper.Items);
     }
 
     private void PushUndo()
@@ -854,7 +914,6 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         _redo.Add(CloneItems(_paper.Items));
         var snapshot = _undo[^1];
         _undo.RemoveAt(_undo.Count - 1);
@@ -867,7 +926,6 @@ internal sealed class TodoEditorControl : Grid
         {
             return;
         }
-
         _undo.Add(CloneItems(_paper.Items));
         var snapshot = _redo[^1];
         _redo.RemoveAt(_redo.Count - 1);
@@ -878,7 +936,7 @@ internal sealed class TodoEditorControl : Grid
     {
         _paper.Items = CloneItems(snapshot);
         TodoRules.NormalizeOrders(_paper.Items);
-        RefreshFromModel();
+        RebuildRows();
         _changed();
     }
 
