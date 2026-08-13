@@ -10,6 +10,8 @@ namespace PaperTodo.Avalonia.Edge;
 
 internal static class EdgeCapsulePreviewContent
 {
+    private const double MarkdownPreviewImageMaximumWidth = 340;
+
     public static EdgeCapsulePreviewSize Measure(
         PaperData paper,
         MonitorGeometry monitor)
@@ -36,8 +38,9 @@ internal static class EdgeCapsulePreviewContent
                 text.Count(character => character == '\n') + 1,
                 1,
                 14);
-            width = 370;
-            height = 82 + lineCount * 18;
+            var imageCount = MarkdownImageReferences.Enumerate(text).Take(3).Count();
+            width = imageCount > 0 ? 390 : 370;
+            height = 82 + lineCount * 18 + imageCount * 120;
         }
         else
         {
@@ -339,6 +342,11 @@ internal static class EdgeCapsulePreviewContent
             return new Border { Height = 6 };
         }
 
+        if (MarkdownImageReferences.TryParseReferenceLine(line, out var imageReference))
+        {
+            return ImageLine(imageReference, palette);
+        }
+
         var baseSize = VisualTextSizes.FontSize(
             12,
             state.NoteTextSize,
@@ -386,6 +394,61 @@ internal static class EdgeCapsulePreviewContent
             palette.TextBrush,
             baseSize,
             state.NoteTextBold ? FontWeight.SemiBold : FontWeight.Normal);
+    }
+
+    private static Control ImageLine(
+        MarkdownImageReference reference,
+        PaperThemePalette palette)
+    {
+        var store = AvaloniaNoteImageRuntime.Store;
+        if (!store.TryGetAsset(reference.ImageId, out var asset) ||
+            !store.TryGetBitmap(reference.ImageId, out var bitmap))
+        {
+            var missing = TextLine(
+                $"[image {reference.ImageId} unavailable]",
+                palette.WeakTextBrush,
+                10,
+                FontWeight.Normal);
+            missing.Opacity = 0.65;
+            return missing;
+        }
+
+        var width = ResolvePreviewImageWidth(reference.DisplayOptions, asset);
+        return new Image
+        {
+            Source = bitmap,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            MaxWidth = width,
+            MaxHeight = 260,
+            Margin = new Thickness(1, 3, 1, 4)
+        };
+    }
+
+    private static double ResolvePreviewImageWidth(
+        MarkdownImageDisplayOptions options,
+        NoteImageAsset asset)
+    {
+        double requested;
+        if (options.WidthAttribute is { } widthAttribute)
+        {
+            requested = widthAttribute.IsPercent
+                ? MarkdownPreviewImageMaximumWidth * widthAttribute.Value / 100.0
+                : widthAttribute.Value;
+        }
+        else if (options.LabelWidth is { } labelWidth)
+        {
+            requested = labelWidth;
+        }
+        else if (options.LabelScalePercent is { } scale)
+        {
+            requested = asset.Width * scale / 100.0;
+        }
+        else
+        {
+            requested = asset.Width;
+        }
+        return Math.Clamp(requested, 48, MarkdownPreviewImageMaximumWidth);
     }
 
     private static TextBlock TextLine(
