@@ -16,6 +16,9 @@ internal sealed class SettingsWindow : Window
     private readonly CheckBox _edgeCapsuleMode;
     private readonly CheckBox _animations;
     private readonly CheckBox _toolTips;
+    private readonly CheckBox _virtualDesktopIntegration;
+    private readonly CheckBox _virtualDesktopMoveOnShow;
+    private readonly CheckBox _virtualDesktopMoveOnCapsule;
     private readonly CheckBox _autoMoveCompleted;
     private readonly CheckBox _autoClearCompleted;
     private readonly CheckBox _todoReminders;
@@ -58,6 +61,15 @@ internal sealed class SettingsWindow : Window
         _edgeCapsuleMode = SettingCheck(text.EdgeCapsuleMode, state.UseDeepCapsuleMode);
         _animations = SettingCheck(text.Animations, state.EnableAnimations);
         _toolTips = SettingCheck(text.ToolTips, state.EnableToolTips);
+        _virtualDesktopIntegration = SettingCheck(
+            text.EnableVirtualDesktops,
+            state.ExperimentalVirtualDesktopIntegration);
+        _virtualDesktopMoveOnShow = SettingCheck(
+            text.VirtualDesktopMoveOnShow,
+            state.ExperimentalVirtualDesktopMoveOnShow);
+        _virtualDesktopMoveOnCapsule = SettingCheck(
+            text.VirtualDesktopMoveOnCapsuleActivation,
+            state.ExperimentalVirtualDesktopMoveOnCapsuleActivation);
         _autoMoveCompleted = SettingCheck(text.AutoMoveCompleted, state.AutoMoveCompletedTodosToBottom);
         _autoClearCompleted = SettingCheck(text.AutoClearCompleted, state.AutoClearCompletedTodos);
         _todoReminders = SettingCheck(text.TodoReminders, state.ExperimentalTodoReminders);
@@ -155,6 +167,10 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(_edgeCapsuleMode);
         panel.Children.Add(_animations);
         panel.Children.Add(_toolTips);
+        panel.Children.Add(Section(text.VirtualDesktops));
+        panel.Children.Add(_virtualDesktopIntegration);
+        panel.Children.Add(_virtualDesktopMoveOnShow);
+        panel.Children.Add(_virtualDesktopMoveOnCapsule);
         panel.Children.Add(Section(text.TodoBehavior));
         panel.Children.Add(_autoMoveCompleted);
         panel.Children.Add(_autoClearCompleted);
@@ -268,6 +284,9 @@ internal sealed class SettingsWindow : Window
         _state.UseDeepCapsuleMode = _edgeCapsuleMode.IsChecked == true;
         _state.EnableAnimations = _animations.IsChecked == true;
         _state.EnableToolTips = _toolTips.IsChecked == true;
+        _state.ExperimentalVirtualDesktopIntegration = _virtualDesktopIntegration.IsChecked == true;
+        _state.ExperimentalVirtualDesktopMoveOnShow = _virtualDesktopMoveOnShow.IsChecked == true;
+        _state.ExperimentalVirtualDesktopMoveOnCapsuleActivation = _virtualDesktopMoveOnCapsule.IsChecked == true;
         _state.AutoMoveCompletedTodosToBottom = _autoMoveCompleted.IsChecked == true;
         _state.AutoClearCompletedTodos = _autoClearCompleted.IsChecked == true;
         _state.ExperimentalTodoReminders = _todoReminders.IsChecked == true;
