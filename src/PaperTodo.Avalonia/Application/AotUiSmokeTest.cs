@@ -11,7 +11,7 @@ namespace PaperTodo.Avalonia.Application;
 /// <summary>
 /// Starts real Todo and Note paper surfaces from the published executable, verifies that their
 /// actual product editors can mutate the shared models, checks the native HWNDs, and exits without
-/// loading user state. This intentionally tests basic editability rather than merely window startup.
+/// loading user state. Failure codes identify the exact basic interaction contract that failed.
 /// </summary>
 internal static class AotUiSmokeTest
 {
@@ -96,8 +96,26 @@ internal static class AotUiSmokeTest
         PaperData notePaper,
         IClassicDesktopStyleApplicationLifetime desktop)
     {
+        var failure = 0;
         var todoHandle = todoWindow.TryGetPlatformHandle();
         var noteHandle = noteWindow.TryGetPlatformHandle();
+
+        if (!todoWindow.IsVisible || !noteWindow.IsVisible)
+        {
+            failure = 10;
+        }
+        else if (todoHandle is null || todoHandle.Handle == IntPtr.Zero ||
+                 !string.Equals(todoHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase) ||
+                 noteHandle is null || noteHandle.Handle == IntPtr.Zero ||
+                 !string.Equals(noteHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase))
+        {
+            failure = 11;
+        }
+        else if (todoPaper.Items.Count != 1)
+        {
+            failure = 12;
+        }
+
         var todoEditor = todoWindow
             .GetVisualDescendants()
             .OfType<TextBox>()
@@ -107,34 +125,41 @@ internal static class AotUiSmokeTest
             .OfType<TextBox>()
             .FirstOrDefault(box => box.IsVisible && box.MaxLength == 100000);
 
-        var succeeded = todoWindow.IsVisible &&
-            noteWindow.IsVisible &&
-            todoHandle is not null &&
-            todoHandle.Handle != IntPtr.Zero &&
-            string.Equals(todoHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase) &&
-            noteHandle is not null &&
-            noteHandle.Handle != IntPtr.Zero &&
-            string.Equals(noteHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase) &&
-            todoPaper.Items.Count == 1 &&
-            todoEditor is not null &&
-            noteEditor is not null;
+        if (failure == 0 && todoEditor is null)
+        {
+            failure = 13;
+        }
+        else if (failure == 0 && noteEditor is null)
+        {
+            failure = 14;
+        }
 
-        if (succeeded)
+        if (failure == 0)
         {
             todoEditor!.Text = "Todo basic editing works";
-            noteEditor!.Text = "Note basic editing works";
-            succeeded = string.Equals(
+            if (!string.Equals(
                     todoPaper.Items[0].Text,
                     "Todo basic editing works",
-                    StringComparison.Ordinal) &&
-                string.Equals(
+                    StringComparison.Ordinal))
+            {
+                failure = 15;
+            }
+        }
+
+        if (failure == 0)
+        {
+            noteEditor!.Text = "Note basic editing works";
+            if (!string.Equals(
                     notePaper.Content,
                     "Note basic editing works",
-                    StringComparison.Ordinal);
+                    StringComparison.Ordinal))
+            {
+                failure = 16;
+            }
         }
 
         todoWindow.Close();
         noteWindow.Close();
-        desktop.Shutdown(succeeded ? 0 : 1);
+        desktop.Shutdown(failure);
     }
 }
