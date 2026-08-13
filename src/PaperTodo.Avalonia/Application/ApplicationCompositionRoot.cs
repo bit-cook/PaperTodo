@@ -27,6 +27,7 @@ internal static class ApplicationCompositionRoot
         paperSurfaces.Disposing += AvaloniaNoteImageRuntime.DisposeShared;
         edgeSurfaces.ReorderRequested += workspace.ReorderEdgeCapsuleWithinQueue;
         workspace.AttachVirtualDesktopRuntime();
+        workspace.AttachFloatingEdgeDragRuntime();
 
         return new ApplicationLifecycleController(
             desktop,
