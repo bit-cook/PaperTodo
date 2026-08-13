@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using PaperTodo.Avalonia.Localization;
 
 namespace PaperTodo.Avalonia.Papers;
@@ -11,6 +12,7 @@ namespace PaperTodo.Avalonia.Papers;
 internal sealed class MarkdownNoteControl : Grid
 {
     private const int MaximumLength = 100000;
+    private const double PreviewImageMaximumWidth = 520;
 
     private readonly PaperData _paper;
     private readonly AppState _state;
@@ -19,6 +21,7 @@ internal sealed class MarkdownNoteControl : Grid
     private readonly TextBox _editor;
     private readonly ScrollViewer _previewScroller;
     private readonly StackPanel _preview;
+    private readonly TextBlock _imageStatus;
     private bool _refreshing;
 
     public MarkdownNoteControl(
@@ -31,6 +34,8 @@ internal sealed class MarkdownNoteControl : Grid
         _state = state;
         _palette = palette;
         _changed = changed;
+
+        RowDefinitions = new RowDefinitions("*,Auto");
 
         _preview = new StackPanel
         {
@@ -97,6 +102,43 @@ internal sealed class MarkdownNoteControl : Grid
 
         Children.Add(_previewScroller);
         Children.Add(_editor);
+
+        var imageButton = new Button
+        {
+            Content = "▧+",
+            Padding = new Thickness(7, 1),
+            Margin = new Thickness(8, 1, 4, 5),
+            MinHeight = 24,
+            Background = Brushes.Transparent,
+            BorderThickness = default,
+            Foreground = _palette.WeakTextBrush,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        imageButton.Click += async (_, _) => await PickImagesAsync();
+        if (_state.EnableToolTips)
+        {
+            ToolTip.SetTip(imageButton, TextCatalog.Current.InsertImage);
+        }
+
+        _imageStatus = new TextBlock
+        {
+            Foreground = _palette.DangerBrush,
+            FontSize = 10,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 4)
+        };
+        var toolbar = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*")
+        };
+        toolbar.Children.Add(imageButton);
+        toolbar.Children.Add(_imageStatus);
+        Grid.SetColumn(_imageStatus, 1);
+        Children.Add(toolbar);
+        Grid.SetRow(toolbar, 1);
+
         RefreshFromModel();
     }
 
@@ -152,6 +194,96 @@ internal sealed class MarkdownNoteControl : Grid
         RebuildPreview(_editor.Text ?? string.Empty);
         _editor.IsVisible = false;
         _previewScroller.IsVisible = true;
+    }
+
+    private async Task PickImagesAsync()
+    {
+        _imageStatus.Text = string.Empty;
+        var topLevel = TopLevel.GetTopLevel(this);
+        var provider = topLevel?.StorageProvider;
+        if (provider?.CanOpen != true)
+        {
+            _imageStatus.Text = TextCatalog.Current.ImageImportUnavailable;
+            return;
+        }
+
+        var selected = await provider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = TextCatalog.Current.InsertImage,
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType(TextCatalog.Current.ImageFiles)
+                {
+                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.tif", "*.tiff", "*.webp"]
+                }
+            ]
+        });
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        var references = new List<string>(selected.Count);
+        try
+        {
+            foreach (var selectedFile in selected)
+            {
+                using var file = selectedFile;
+                var path = file.TryGetLocalPath();
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    continue;
+                }
+
+                var asset = AvaloniaNoteImageRuntime.Store.ImportImageFile(_paper.Id, path);
+                references.Add(MarkdownImageReferences.CreateReference(asset.Id));
+            }
+        }
+        catch (Exception exception)
+        {
+            _imageStatus.Text = exception.Message;
+        }
+
+        if (references.Count == 0)
+        {
+            return;
+        }
+
+        InsertImageReferences(references);
+    }
+
+    private void InsertImageReferences(IReadOnlyList<string> references)
+    {
+        var insertion = string.Join(Environment.NewLine, references);
+        var current = _editor.Text ?? PaperTextCodec.ToEditorText(_paper);
+        var caret = _editor.IsVisible
+            ? Math.Clamp(_editor.CaretIndex, 0, current.Length)
+            : current.Length;
+
+        var prefix = caret > 0 && current[caret - 1] is not '\r' and not '\n'
+            ? Environment.NewLine
+            : string.Empty;
+        var suffix = caret < current.Length && current[caret] is not '\r' and not '\n'
+            ? Environment.NewLine
+            : string.Empty;
+        var inserted = prefix + insertion + suffix;
+        var updated = current.Insert(caret, inserted);
+
+        _refreshing = true;
+        try
+        {
+            _editor.Text = updated;
+            _editor.CaretIndex = Math.Min(updated.Length, caret + inserted.Length);
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+
+        PaperTextCodec.ApplyEditorText(_paper, updated);
+        _changed();
+        RebuildPreview(updated);
     }
 
     private void RebuildPreview(string source)
@@ -213,6 +345,12 @@ internal sealed class MarkdownNoteControl : Grid
         }
 
         var trimmed = line.TrimStart();
+        if (MarkdownImageReferences.TryParseReferenceLine(trimmed, out var imageReference))
+        {
+            AddImage(imageReference);
+            return;
+        }
+
         var indent = Math.Min(24, (line.Length - trimmed.Length) * 4);
         if (trimmed.StartsWith("### ", StringComparison.Ordinal))
         {
@@ -265,6 +403,62 @@ internal sealed class MarkdownNoteControl : Grid
         }
 
         AddText(StripSimpleInlineMarkers(trimmed), BaseFontSize(), FontWeight.Normal, indent, 1);
+    }
+
+    private void AddImage(MarkdownImageReference reference)
+    {
+        var store = AvaloniaNoteImageRuntime.Store;
+        if (!store.TryGetAsset(reference.ImageId, out var asset) ||
+            !store.TryGetBitmap(reference.ImageId, out var bitmap))
+        {
+            AddText(
+                $"[image {reference.ImageId} unavailable]",
+                Math.Max(10, BaseFontSize() - 1),
+                FontWeight.Normal,
+                0,
+                3,
+                0.65);
+            return;
+        }
+
+        var desiredWidth = ResolveImageWidth(reference.DisplayOptions, asset);
+        var image = new Image
+        {
+            Source = bitmap,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            MaxWidth = desiredWidth,
+            MaxHeight = Math.Min(720, Math.Max(80, asset.Height)),
+            Margin = new Thickness(0, 4, 0, 5)
+        };
+        _preview.Children.Add(image);
+    }
+
+    private static double ResolveImageWidth(
+        MarkdownImageDisplayOptions options,
+        NoteImageAsset asset)
+    {
+        double requested;
+        if (options.WidthAttribute is { } widthAttribute)
+        {
+            requested = widthAttribute.IsPercent
+                ? PreviewImageMaximumWidth * widthAttribute.Value / 100.0
+                : widthAttribute.Value;
+        }
+        else if (options.LabelWidth is { } labelWidth)
+        {
+            requested = labelWidth;
+        }
+        else if (options.LabelScalePercent is { } scale)
+        {
+            requested = asset.Width * scale / 100.0;
+        }
+        else
+        {
+            requested = asset.Width;
+        }
+
+        return Math.Clamp(requested, 48, PreviewImageMaximumWidth);
     }
 
     private void AddCodeBlock(IReadOnlyCollection<string> lines)
