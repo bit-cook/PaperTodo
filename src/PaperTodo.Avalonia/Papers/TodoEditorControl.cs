@@ -57,8 +57,8 @@ internal sealed class TodoEditorControl : Grid
         {
             Content = _rows,
             Padding = new Thickness(6, 5, 6, 3),
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+            VerticalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = global::Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
         };
         Children.Add(scroller);
 
@@ -135,8 +135,7 @@ internal sealed class TodoEditorControl : Grid
             Background = Brushes.Transparent,
             MinHeight = metrics.RowMinHeight,
             Padding = new Thickness(2, 0),
-            Opacity = item.Done ? 0.58 : 1,
-            Tag = item.Id
+            Opacity = item.Done ? 0.58 : 1
         };
         var grid = new Grid
         {
@@ -329,7 +328,7 @@ internal sealed class TodoEditorControl : Grid
             var ordered = OrderedItems();
             var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
             _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
-            var focus = EnsureWritableItemAfterRemoval(ordered, index, item.Id);
+            var focus = EnsureWritableItemAfterRemoval(index);
             RebuildRows(focus?.Id);
         }
         else if (_state.AutoMoveCompletedTodosToBottom)
@@ -375,7 +374,6 @@ internal sealed class TodoEditorControl : Grid
 
     private void RemoveEmptyItemAndFocusPrevious(PaperItem item)
     {
-        PushUndo();
         var ordered = OrderedItems();
         var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
         if (index <= 0)
@@ -383,6 +381,7 @@ internal sealed class TodoEditorControl : Grid
             return;
         }
 
+        PushUndo();
         var previous = ordered[index - 1];
         ordered.RemoveAt(index);
         _paper.Items = ordered;
@@ -397,16 +396,13 @@ internal sealed class TodoEditorControl : Grid
         var ordered = OrderedItems();
         var index = ordered.FindIndex(candidate => candidate.Id == item.Id);
         _paper.Items.RemoveAll(candidate => candidate.Id == item.Id);
-        var focus = EnsureWritableItemAfterRemoval(ordered, index, item.Id);
+        var focus = EnsureWritableItemAfterRemoval(index);
         TodoRules.NormalizeOrders(_paper.Items);
         RebuildRows(focus?.Id);
         _changed();
     }
 
-    private PaperItem? EnsureWritableItemAfterRemoval(
-        IReadOnlyList<PaperItem> previousOrder,
-        int previousIndex,
-        string removedId)
+    private PaperItem? EnsureWritableItemAfterRemoval(int previousIndex)
     {
         if (_paper.Items.Count == 0)
         {
