@@ -25,6 +25,7 @@ internal sealed class SettingsWindow : Window
     private readonly Slider _quickReminderMinutes;
     private readonly CheckBox _showNewTodo;
     private readonly CheckBox _showNewNote;
+    private readonly CheckBox _showExternalOpen;
     private readonly ComboBox _theme;
     private readonly ComboBox _colorScheme;
     private readonly Slider _zoom;
@@ -33,6 +34,7 @@ internal sealed class SettingsWindow : Window
     private readonly ComboBox _titleSize;
     private readonly ComboBox _capsuleSize;
     private readonly ComboBox _markdownMode;
+    private readonly TextBox _externalMarkdownExtension;
     private readonly CheckBox _todoBold;
     private readonly CheckBox _noteBold;
     private readonly CheckBox _titleBold;
@@ -79,6 +81,7 @@ internal sealed class SettingsWindow : Window
             ExperimentalTodoReminderOptions.NormalizeQuickMinutes(state.ExperimentalTodoReminderQuickMinutes));
         _showNewTodo = SettingCheck(text.TopBarNewTodo, state.ShowTopBarNewTodoButton);
         _showNewNote = SettingCheck(text.TopBarNewNote, state.ShowTopBarNewNoteButton);
+        _showExternalOpen = SettingCheck(text.TopBarExternalOpen, state.ShowTopBarExternalOpenButton);
 
         _theme = SettingCombo(["system", "light", "dark"], state.Theme);
         _colorScheme = SettingCombo(ColorSchemes.All, ColorSchemes.Normalize(state.ColorScheme));
@@ -93,6 +96,12 @@ internal sealed class SettingsWindow : Window
         _markdownMode = SettingCombo(
             [MarkdownRenderModes.Off, MarkdownRenderModes.Basic, MarkdownRenderModes.Enhanced],
             normalizedMarkdownMode);
+        _externalMarkdownExtension = new TextBox
+        {
+            Text = ExternalMarkdownFileExtensions.Normalize(state.ExternalMarkdownExtension),
+            MinWidth = 160,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         _todoBold = SettingCheck(text.Bold, state.TodoTextBold);
         _noteBold = SettingCheck(text.Bold, state.NoteTextBold);
         _titleBold = SettingCheck(text.Bold, state.TitleTextBold);
@@ -179,6 +188,7 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(Section(text.TopBar));
         panel.Children.Add(_showNewTodo);
         panel.Children.Add(_showNewNote);
+        panel.Children.Add(_showExternalOpen);
         return Scroller(panel);
     }
 
@@ -196,6 +206,7 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(SizeBoldRow(text.TitleSize, _titleSize, _titleBold));
         panel.Children.Add(SizeBoldRow(text.CapsuleSize, _capsuleSize, _capsuleBold));
         panel.Children.Add(Labeled(text.MarkdownMode, _markdownMode));
+        panel.Children.Add(Labeled(text.ExternalMarkdownExtension, _externalMarkdownExtension));
         panel.Children.Add(Section(text.WindowOpacity));
         panel.Children.Add(_inactiveOpacity);
         panel.Children.Add(Labeled(text.InactiveOpacityLevel, _inactiveOpacityValue));
@@ -294,6 +305,7 @@ internal sealed class SettingsWindow : Window
             (int)Math.Round(_quickReminderMinutes.Value, MidpointRounding.AwayFromZero));
         _state.ShowTopBarNewTodoButton = _showNewTodo.IsChecked == true;
         _state.ShowTopBarNewNoteButton = _showNewNote.IsChecked == true;
+        _state.ShowTopBarExternalOpenButton = _showExternalOpen.IsChecked == true;
         _state.Theme = (_theme.SelectedItem as string) ?? "system";
         _state.ColorScheme = ColorSchemes.Normalize(_colorScheme.SelectedItem as string);
         _state.Zoom = OverallFontScales.Normalize(_zoom.Value);
@@ -304,6 +316,8 @@ internal sealed class SettingsWindow : Window
         _state.MarkdownRenderMode = MarkdownRenderModes.IsValid(_markdownMode.SelectedItem as string)
             ? (string)_markdownMode.SelectedItem!
             : MarkdownRenderModes.Basic;
+        _state.ExternalMarkdownExtension = ExternalMarkdownFileExtensions.Normalize(_externalMarkdownExtension.Text);
+        _externalMarkdownExtension.Text = _state.ExternalMarkdownExtension;
         _state.TodoTextBold = _todoBold.IsChecked == true;
         _state.NoteTextBold = _noteBold.IsChecked == true;
         _state.TitleTextBold = _titleBold.IsChecked == true;
