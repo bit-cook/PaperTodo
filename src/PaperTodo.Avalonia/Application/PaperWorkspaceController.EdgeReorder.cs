@@ -144,8 +144,8 @@ internal sealed partial class PaperWorkspaceController
             foreach (var screen in screens.All)
             {
                 var work = screen.WorkingArea;
-                if (pointer.X < work.Left || pointer.X >= work.Right ||
-                    pointer.Y < work.Top || pointer.Y >= work.Bottom)
+                if (pointer.X < work.X || pointer.X >= work.Right ||
+                    pointer.Y < work.Y || pointer.Y >= work.Bottom)
                 {
                     continue;
                 }
@@ -154,7 +154,7 @@ internal sealed partial class PaperWorkspaceController
                     32,
                     EdgeQueueDropZoneDip * Math.Max(1, screen.Scaling));
                 EdgeCapsuleEdge? edge = null;
-                if (pointer.X <= work.Left + threshold)
+                if (pointer.X <= work.X + threshold)
                 {
                     edge = EdgeCapsuleEdge.Left;
                 }
