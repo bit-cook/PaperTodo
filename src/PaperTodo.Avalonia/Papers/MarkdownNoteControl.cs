@@ -22,7 +22,10 @@ internal sealed class MarkdownNoteControl : Grid
     private readonly ScrollViewer _previewScroller;
     private readonly StackPanel _preview;
     private readonly TextBlock _imageStatus;
+    private readonly Button _modeButton;
     private bool _refreshing;
+    private bool _editing;
+    private bool _initialized;
 
     public MarkdownNoteControl(
         PaperData paper,
@@ -36,21 +39,32 @@ internal sealed class MarkdownNoteControl : Grid
         _changed = changed;
 
         RowDefinitions = new RowDefinitions("*,Auto");
+        Background = Brushes.Transparent;
 
         _preview = new StackPanel
         {
             Spacing = 3,
-            Margin = new Thickness(11, 8)
+            Margin = new Thickness(11, 8),
+            Background = Brushes.Transparent
         };
+        _preview.PointerPressed += (_, e) =>
+        {
+            if (_state.MarkdownRenderMode == MarkdownRenderModes.Off ||
+                !e.GetCurrentPoint(_preview).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            SetEditing(editing: true, focus: true, moveCaretToEnd: true);
+            e.Handled = true;
+        };
+
         _previewScroller = new ScrollViewer
         {
             Content = _preview,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        };
-        _previewScroller.DoubleTapped += (_, e) =>
-        {
-            EnterEditor();
-            e.Handled = true;
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Background = Brushes.Transparent
         };
 
         _editor = new TextBox
@@ -86,28 +100,45 @@ internal sealed class MarkdownNoteControl : Grid
         };
         _editor.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape)
+            if (e.Key == Key.Escape && _state.MarkdownRenderMode != MarkdownRenderModes.Off)
             {
-                ExitEditor();
+                SetEditing(editing: false, focus: false);
                 e.Handled = true;
-            }
-        };
-        _editor.LostFocus += (_, _) =>
-        {
-            if (_editor.IsVisible)
-            {
-                ExitEditor();
             }
         };
 
         Children.Add(_previewScroller);
         Children.Add(_editor);
 
+        _modeButton = new Button
+        {
+            Content = "✎",
+            Padding = new Thickness(7, 1),
+            Margin = new Thickness(8, 1, 2, 5),
+            MinWidth = 30,
+            MinHeight = 24,
+            Background = Brushes.Transparent,
+            BorderThickness = default,
+            Foreground = _palette.WeakTextBrush,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        _modeButton.Click += (_, _) =>
+        {
+            if (_state.MarkdownRenderMode == MarkdownRenderModes.Off)
+            {
+                _editor.Focus();
+                return;
+            }
+
+            SetEditing(!_editing, focus: !_editing, moveCaretToEnd: false);
+        };
+
         var imageButton = new Button
         {
             Content = "▧+",
             Padding = new Thickness(7, 1),
-            Margin = new Thickness(8, 1, 4, 5),
+            Margin = new Thickness(2, 1, 4, 5),
             MinHeight = 24,
             Background = Brushes.Transparent,
             BorderThickness = default,
@@ -131,11 +162,13 @@ internal sealed class MarkdownNoteControl : Grid
         };
         var toolbar = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,*")
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*")
         };
+        toolbar.Children.Add(_modeButton);
         toolbar.Children.Add(imageButton);
+        Grid.SetColumn(imageButton, 1);
         toolbar.Children.Add(_imageStatus);
-        Grid.SetColumn(_imageStatus, 1);
+        Grid.SetColumn(_imageStatus, 2);
         Children.Add(toolbar);
         Grid.SetRow(toolbar, 1);
 
@@ -159,41 +192,64 @@ internal sealed class MarkdownNoteControl : Grid
         }
 
         RebuildPreview(text);
-        if (_state.MarkdownRenderMode == MarkdownRenderModes.Off)
+        if (!_initialized)
         {
-            _previewScroller.IsVisible = false;
-            _editor.IsVisible = true;
+            // A brand-new blank note must be immediately writable. Existing notes retain the
+            // PaperTodo preview-first presentation, but a single click enters editing.
+            _editing = _state.MarkdownRenderMode == MarkdownRenderModes.Off ||
+                string.IsNullOrEmpty(text);
+            _initialized = true;
         }
-        else if (!_editor.IsFocused)
+        else if (_state.MarkdownRenderMode == MarkdownRenderModes.Off)
         {
-            _editor.IsVisible = false;
-            _previewScroller.IsVisible = true;
+            _editing = true;
         }
+
+        ApplyEditingPresentation();
     }
 
-    private void EnterEditor()
+    private void SetEditing(
+        bool editing,
+        bool focus,
+        bool moveCaretToEnd = false)
     {
         if (_state.MarkdownRenderMode == MarkdownRenderModes.Off)
+        {
+            editing = true;
+        }
+
+        if (!editing)
+        {
+            RebuildPreview(_editor.Text ?? string.Empty);
+        }
+
+        _editing = editing;
+        ApplyEditingPresentation();
+        if (!focus || !_editing)
         {
             return;
         }
 
-        _previewScroller.IsVisible = false;
-        _editor.IsVisible = true;
         _editor.Focus();
-        _editor.CaretIndex = _editor.Text?.Length ?? 0;
+        if (moveCaretToEnd)
+        {
+            _editor.CaretIndex = _editor.Text?.Length ?? 0;
+        }
+        else
+        {
+            _editor.CaretIndex = Math.Clamp(
+                _editor.CaretIndex,
+                0,
+                _editor.Text?.Length ?? 0);
+        }
     }
 
-    private void ExitEditor()
+    private void ApplyEditingPresentation()
     {
-        if (_state.MarkdownRenderMode == MarkdownRenderModes.Off)
-        {
-            return;
-        }
-
-        RebuildPreview(_editor.Text ?? string.Empty);
-        _editor.IsVisible = false;
-        _previewScroller.IsVisible = true;
+        _editor.IsVisible = _editing;
+        _previewScroller.IsVisible = !_editing;
+        _modeButton.Content = _editing ? "◎" : "✎";
+        _modeButton.IsVisible = _state.MarkdownRenderMode != MarkdownRenderModes.Off;
     }
 
     private async Task PickImagesAsync()
@@ -251,13 +307,14 @@ internal sealed class MarkdownNoteControl : Grid
         }
 
         InsertImageReferences(references);
+        SetEditing(editing: true, focus: true, moveCaretToEnd: false);
     }
 
     private void InsertImageReferences(IReadOnlyList<string> references)
     {
         var insertion = string.Join(Environment.NewLine, references);
         var current = _editor.Text ?? PaperTextCodec.ToEditorText(_paper);
-        var caret = _editor.IsVisible
+        var caret = _editing
             ? Math.Clamp(_editor.CaretIndex, 0, current.Length)
             : current.Length;
 
