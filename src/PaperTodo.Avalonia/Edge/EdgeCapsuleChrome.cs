@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using PaperTodo.Avalonia.Papers;
 
 namespace PaperTodo.Avalonia.Edge;
@@ -109,7 +111,6 @@ internal sealed class EdgeCapsuleChrome : Grid
         {
             return;
         }
-
         _previewHost.Content = content;
     }
 
@@ -118,8 +119,18 @@ internal sealed class EdgeCapsuleChrome : Grid
     private void OnBodyPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         var current = e.GetCurrentPoint(_body);
-        if (!current.Properties.IsLeftButtonPressed ||
-            (_previewVisible && current.Position.Y > PreviewHeaderDragHeightDip))
+        if (!current.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        // Preview controls remain interactive, but ordinary preview background/text keeps the
+        // original PaperTodo capsule semantic: click it and the paper expands. The prior Avalonia
+        // port discarded every click below the 34 DIP preview header, which made an opened preview
+        // feel dead unless the user knew the tiny hidden activation strip.
+        if (_previewVisible &&
+            current.Position.Y > PreviewHeaderDragHeightDip &&
+            IsInteractivePreviewSource(e.Source))
         {
             return;
         }
@@ -128,6 +139,29 @@ internal sealed class EdgeCapsuleChrome : Grid
         e.Pointer.Capture(_body);
         BodyPointerPressed?.Invoke(ToDevicePoint(e));
         e.Handled = true;
+    }
+
+    private bool IsInteractivePreviewSource(object? source)
+    {
+        if (!_previewVisible || source is not Visual visual)
+        {
+            return false;
+        }
+
+        for (Visual? current = visual;
+             current is not null && !ReferenceEquals(current, _body);
+             current = current.GetVisualParent())
+        {
+            if (current is Button or
+                ToggleButton or
+                TextBox or
+                ScrollBar or
+                Slider)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void OnBodyPointerMoved(object? sender, PointerEventArgs e)
