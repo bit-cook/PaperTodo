@@ -12,6 +12,8 @@ namespace PaperTodo.Avalonia.Application;
 /// Starts real Todo and Note paper surfaces from the published executable, verifies that their
 /// actual product editors can mutate the shared models, checks the native HWNDs, and exits without
 /// loading user state. Failure codes identify the exact basic interaction contract that failed.
+/// Text propagation is verified after a UI frame because Avalonia routed text events are not
+/// required to update the model in the same property-set call stack.
 /// </summary>
 internal static class AotUiSmokeTest
 {
@@ -68,7 +70,7 @@ internal static class AotUiSmokeTest
 
             todoWindow.RequestAnimationFrame(_ =>
                 todoWindow.RequestAnimationFrame(_ =>
-                    Complete(todoWindow, noteWindow, todoPaper, notePaper, desktop)));
+                    BeginEditingCheck(todoWindow, noteWindow, todoPaper, notePaper, desktop)));
         }
 
         todoWindow.Opened += (_, _) => OnOpened();
@@ -89,77 +91,95 @@ internal static class AotUiSmokeTest
             IsVisible: true,
             AlwaysOnTop: false));
 
-    private static void Complete(
+    private static void BeginEditingCheck(
         PaperSurfaceWindow todoWindow,
         PaperSurfaceWindow noteWindow,
         PaperData todoPaper,
         PaperData notePaper,
         IClassicDesktopStyleApplicationLifetime desktop)
     {
-        var failure = 0;
-        var todoHandle = todoWindow.TryGetPlatformHandle();
-        var noteHandle = noteWindow.TryGetPlatformHandle();
-
-        if (!todoWindow.IsVisible || !noteWindow.IsVisible)
+        var failure = ValidateStructure(todoWindow, noteWindow, todoPaper, out var todoEditor, out var noteEditor);
+        if (failure != 0)
         {
-            failure = 10;
-        }
-        else if (todoHandle is null || todoHandle.Handle == IntPtr.Zero ||
-                 !string.Equals(todoHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase) ||
-                 noteHandle is null || noteHandle.Handle == IntPtr.Zero ||
-                 !string.Equals(noteHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase))
-        {
-            failure = 11;
-        }
-        else if (todoPaper.Items.Count != 1)
-        {
-            failure = 12;
+            Finish(todoWindow, noteWindow, desktop, failure);
+            return;
         }
 
-        var todoEditor = todoWindow
-            .GetVisualDescendants()
-            .OfType<TextBox>()
-            .FirstOrDefault(box => box.IsVisible && box.MaxLength == 5000);
-        var noteEditor = noteWindow
-            .GetVisualDescendants()
-            .OfType<TextBox>()
-            .FirstOrDefault(box => box.IsVisible && box.MaxLength == 100000);
-
-        if (failure == 0 && todoEditor is null)
+        todoEditor!.Text = "Todo basic editing works";
+        todoWindow.RequestAnimationFrame(_ =>
         {
-            failure = 13;
-        }
-        else if (failure == 0 && noteEditor is null)
-        {
-            failure = 14;
-        }
-
-        if (failure == 0)
-        {
-            todoEditor!.Text = "Todo basic editing works";
             if (!string.Equals(
                     todoPaper.Items[0].Text,
                     "Todo basic editing works",
                     StringComparison.Ordinal))
             {
-                failure = 15;
+                Finish(todoWindow, noteWindow, desktop, 15);
+                return;
             }
-        }
 
-        if (failure == 0)
-        {
             noteEditor!.Text = "Note basic editing works";
-            if (!string.Equals(
+            noteWindow.RequestAnimationFrame(_ =>
+            {
+                var noteSynced = string.Equals(
                     notePaper.Content,
                     "Note basic editing works",
-                    StringComparison.Ordinal))
-            {
-                failure = 16;
-            }
+                    StringComparison.Ordinal);
+                Finish(todoWindow, noteWindow, desktop, noteSynced ? 0 : 16);
+            });
+        });
+    }
+
+    private static int ValidateStructure(
+        PaperSurfaceWindow todoWindow,
+        PaperSurfaceWindow noteWindow,
+        PaperData todoPaper,
+        out TextBox? todoEditor,
+        out TextBox? noteEditor)
+    {
+        todoEditor = null;
+        noteEditor = null;
+        var todoHandle = todoWindow.TryGetPlatformHandle();
+        var noteHandle = noteWindow.TryGetPlatformHandle();
+
+        if (!todoWindow.IsVisible || !noteWindow.IsVisible)
+        {
+            return 10;
+        }
+        if (todoHandle is null || todoHandle.Handle == IntPtr.Zero ||
+            !string.Equals(todoHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase) ||
+            noteHandle is null || noteHandle.Handle == IntPtr.Zero ||
+            !string.Equals(noteHandle.HandleDescriptor, "HWND", StringComparison.OrdinalIgnoreCase))
+        {
+            return 11;
+        }
+        if (todoPaper.Items.Count != 1)
+        {
+            return 12;
         }
 
+        todoEditor = todoWindow
+            .GetVisualDescendants()
+            .OfType<TextBox>()
+            .FirstOrDefault(box => box.IsVisible && box.MaxLength == 5000);
+        noteEditor = noteWindow
+            .GetVisualDescendants()
+            .OfType<TextBox>()
+            .FirstOrDefault(box => box.IsVisible && box.MaxLength == 100000);
+        if (todoEditor is null)
+        {
+            return 13;
+        }
+        return noteEditor is null ? 14 : 0;
+    }
+
+    private static void Finish(
+        PaperSurfaceWindow todoWindow,
+        PaperSurfaceWindow noteWindow,
+        IClassicDesktopStyleApplicationLifetime desktop,
+        int exitCode)
+    {
         todoWindow.Close();
         noteWindow.Close();
-        desktop.Shutdown(failure);
+        desktop.Shutdown(exitCode);
     }
 }
