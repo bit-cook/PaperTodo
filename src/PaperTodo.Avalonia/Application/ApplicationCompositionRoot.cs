@@ -33,6 +33,10 @@ internal static class ApplicationCompositionRoot
             desktop,
             launch,
             workspace,
-            commandSink => new TrayIconController(commandSink, workspace.ShowSettings));
+            commandSink => new TrayIconController(
+                commandSink,
+                workspace.ShowSettings,
+                workspace.GetTrayPapers,
+                workspace.ActivatePaperFromTray));
     }
 }
