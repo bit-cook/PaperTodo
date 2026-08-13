@@ -105,9 +105,11 @@ internal sealed partial class PaperWorkspaceController
         }
     }
 
-    private bool VirtualDesktopIntegrationAvailable(AppState state) =>
-        state.ExperimentalVirtualDesktopIntegration &&
-        !state.HidePapersFromWindowSwitcher;
+    private static bool VirtualDesktopIntegrationAvailable(AppState state) =>
+        // Avalonia has not yet implemented the WPF-only window-switcher hiding style, so a legacy
+        // HidePapersFromWindowSwitcher=true value must not silently disable this otherwise usable
+        // documented IVirtualDesktopManager path.
+        state.ExperimentalVirtualDesktopIntegration;
 
     private VirtualDesktopAdapter? EnsureVirtualDesktopAdapter()
     {
