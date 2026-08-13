@@ -9,12 +9,15 @@ namespace PaperTodo.Avalonia.Edge;
 
 internal sealed class EdgeCapsuleChrome : Grid
 {
+    private const double PreviewHeaderDragHeightDip = 34;
+
     private readonly Border _body;
     private readonly Border _close;
     private readonly Grid _bodyContent;
     private readonly TextBlock _title;
     private readonly ContentControl _previewHost;
     private bool _previewVisible;
+    private bool _bodyPointerCaptured;
 
     public EdgeCapsuleChrome(AppState state)
     {
@@ -56,19 +59,10 @@ internal sealed class EdgeCapsuleChrome : Grid
             ClipToBounds = true,
             Child = _bodyContent
         };
-        _body.PointerPressed += (_, e) =>
-        {
-            if (_previewVisible)
-            {
-                return;
-            }
-
-            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            {
-                BodyInvoked?.Invoke();
-                e.Handled = true;
-            }
-        };
+        _body.PointerPressed += OnBodyPointerPressed;
+        _body.PointerMoved += OnBodyPointerMoved;
+        _body.PointerReleased += OnBodyPointerReleased;
+        _body.PointerCaptureLost += OnBodyPointerCaptureLost;
 
         _close = new Border
         {
@@ -100,6 +94,10 @@ internal sealed class EdgeCapsuleChrome : Grid
 
     public event Action? BodyInvoked;
     public event Action? CloseInvoked;
+    public event Action<DeviceScreenPoint>? BodyPointerPressed;
+    public event Action<DeviceScreenPoint, bool>? BodyPointerMoved;
+    public event Action<DeviceScreenPoint>? BodyPointerReleased;
+    public event Action? BodyPointerCaptureLost;
 
     public bool HasPreviewContent => _previewHost.Content is Control;
 
@@ -113,6 +111,69 @@ internal sealed class EdgeCapsuleChrome : Grid
         }
 
         _previewHost.Content = content;
+    }
+
+    public void InvokeBody() => BodyInvoked?.Invoke();
+
+    private void OnBodyPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var current = e.GetCurrentPoint(_body);
+        if (!current.Properties.IsLeftButtonPressed ||
+            (_previewVisible && current.Position.Y > PreviewHeaderDragHeightDip))
+        {
+            return;
+        }
+
+        _bodyPointerCaptured = true;
+        e.Pointer.Capture(_body);
+        BodyPointerPressed?.Invoke(ToDevicePoint(e));
+        e.Handled = true;
+    }
+
+    private void OnBodyPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_bodyPointerCaptured)
+        {
+            return;
+        }
+
+        BodyPointerMoved?.Invoke(
+            ToDevicePoint(e),
+            e.GetCurrentPoint(_body).Properties.IsLeftButtonPressed);
+        e.Handled = true;
+    }
+
+    private void OnBodyPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_bodyPointerCaptured)
+        {
+            return;
+        }
+
+        var point = ToDevicePoint(e);
+        _bodyPointerCaptured = false;
+        e.Pointer.Capture(null);
+        BodyPointerReleased?.Invoke(point);
+        e.Handled = true;
+    }
+
+    private void OnBodyPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        if (!_bodyPointerCaptured)
+        {
+            return;
+        }
+
+        _bodyPointerCaptured = false;
+        BodyPointerCaptureLost?.Invoke();
+    }
+
+    private DeviceScreenPoint ToDevicePoint(PointerEventArgs e)
+    {
+        var point = global::Avalonia.VisualExtensions.PointToScreen(
+            _body,
+            e.GetPosition(_body));
+        return new DeviceScreenPoint(point.X, point.Y);
     }
 
     public void ApplyShape(

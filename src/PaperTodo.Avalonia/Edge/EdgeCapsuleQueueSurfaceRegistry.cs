@@ -10,6 +10,8 @@ internal sealed class EdgeCapsuleQueueSurfaceRegistry : IDisposable
 
     public IReadOnlyCollection<IEdgeCapsuleQueueSurface> Surfaces => _surfaces.Values;
 
+    public event EventHandler<EdgeCapsuleReorderRequestedEventArgs>? ReorderRequested;
+
     public EdgeCapsuleQueueSurface GetOrCreate(EdgeCapsuleQueueKey queue)
     {
         Dispatcher.UIThread.VerifyAccess();
@@ -22,10 +24,20 @@ internal sealed class EdgeCapsuleQueueSurfaceRegistry : IDisposable
         }
 
         var created = new EdgeCapsuleQueueSurface(queue);
-        created.Closed += (_, _) => _surfaces.Remove(queue);
+        created.ReorderRequested += OnSurfaceReorderRequested;
+        created.Closed += (_, _) =>
+        {
+            created.ReorderRequested -= OnSurfaceReorderRequested;
+            _surfaces.Remove(queue);
+        };
         _surfaces.Add(queue, created);
         return created;
     }
+
+    private void OnSurfaceReorderRequested(
+        object? sender,
+        EdgeCapsuleReorderRequestedEventArgs e) =>
+        ReorderRequested?.Invoke(sender, e);
 
     public bool TryGet(EdgeCapsuleQueueKey queue, out IEdgeCapsuleQueueSurface surface)
     {
@@ -58,6 +70,7 @@ internal sealed class EdgeCapsuleQueueSurfaceRegistry : IDisposable
         }
 
         _disposed = true;
+        ReorderRequested = null;
         if (Dispatcher.UIThread.CheckAccess())
         {
             CloseAll();

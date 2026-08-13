@@ -24,6 +24,7 @@ internal static class ApplicationCompositionRoot
             paperSurfaces,
             edgeSurfaces);
         paperSurfaces.LinkedPaperRequested += workspace.ActivateLinkedPaperFromQuickLaunch;
+        edgeSurfaces.ReorderRequested += workspace.ReorderEdgeCapsuleWithinQueue;
 
         return new ApplicationLifecycleController(
             desktop,

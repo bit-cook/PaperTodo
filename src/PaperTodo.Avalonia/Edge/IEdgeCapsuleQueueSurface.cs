@@ -16,6 +16,7 @@ internal interface IEdgeCapsuleQueueSurface
     DeviceScreenRect InteractiveBounds { get; }
 
     event EventHandler<EdgeCapsuleTransparentHitTestEventArgs>? TransparentHitTestRequested;
+    event EventHandler<EdgeCapsuleReorderRequestedEventArgs>? ReorderRequested;
 
     EdgeCapsuleNodeHost AttachPaper(string paperId, Control chrome);
 
@@ -37,4 +38,15 @@ internal sealed class EdgeCapsuleTransparentHitTestEventArgs(PixelPoint devicePo
     public PixelPoint DevicePoint { get; } = devicePoint;
 
     public bool IsTransparent { get; set; }
+}
+
+internal sealed class EdgeCapsuleReorderRequestedEventArgs(
+    EdgeCapsuleQueueKey queue,
+    string paperId,
+    int targetIndex) : EventArgs
+{
+    public EdgeCapsuleQueueKey Queue { get; } = queue.Normalize();
+    public string PaperId { get; } = paperId;
+    public int TargetIndex { get; } = Math.Max(0, targetIndex);
+    public bool Handled { get; set; }
 }

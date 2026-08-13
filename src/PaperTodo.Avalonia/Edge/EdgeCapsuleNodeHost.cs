@@ -37,6 +37,13 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
             IsVisible = false
         };
         _root.AttachedToVisualTree += OnAttachedToVisualTree;
+        if (_chrome is not null)
+        {
+            _chrome.BodyPointerPressed += OnBodyPointerPressed;
+            _chrome.BodyPointerMoved += OnBodyPointerMoved;
+            _chrome.BodyPointerReleased += OnBodyPointerReleased;
+            _chrome.BodyPointerCaptureLost += OnBodyPointerCaptureLost;
+        }
 
         var attached = EdgeCapsuleReducer.Reduce(
             EdgeCapsuleModel.Initial,
@@ -56,9 +63,28 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
     public EdgeCapsulePresentationFrame AppliedFrame { get; private set; } =
         EdgeCapsulePresentationFrame.Hidden;
 
+    public event Action<EdgeCapsuleNodeHost, DeviceScreenPoint>? BodyPointerPressed;
+    public event Action<EdgeCapsuleNodeHost, DeviceScreenPoint, bool>? BodyPointerMoved;
+    public event Action<EdgeCapsuleNodeHost, DeviceScreenPoint>? BodyPointerReleased;
+    public event Action<EdgeCapsuleNodeHost>? BodyPointerCaptureLost;
+
     public void SetTitle(string? title) => _chrome?.SetTitle(title);
 
     public void SetPreviewContent(Control? content) => _chrome?.SetPreviewContent(content);
+
+    public void InvokeBody() => _chrome?.InvokeBody();
+
+    private void OnBodyPointerPressed(DeviceScreenPoint point) =>
+        BodyPointerPressed?.Invoke(this, point);
+
+    private void OnBodyPointerMoved(DeviceScreenPoint point, bool leftButtonPressed) =>
+        BodyPointerMoved?.Invoke(this, point, leftButtonPressed);
+
+    private void OnBodyPointerReleased(DeviceScreenPoint point) =>
+        BodyPointerReleased?.Invoke(this, point);
+
+    private void OnBodyPointerCaptureLost() =>
+        BodyPointerCaptureLost?.Invoke(this);
 
     public bool Apply(
         EdgeCapsulePresentationFrame frame,
@@ -67,6 +93,7 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (motion.Reason != EdgeCapsuleTransitionReason.Pointer &&
+            motion.Reason != EdgeCapsuleTransitionReason.Drag &&
             frame.Surface != EdgeCapsuleSurfaceKind.DockedPreview)
         {
             _restingFrame = frame;
@@ -80,6 +107,23 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
         }
 
         return ApplyCore(frame, queueHostBounds, motion);
+    }
+
+    public bool RestoreRestingFrame(
+        DeviceScreenRect queueHostBounds,
+        bool animate)
+    {
+        if (!_restingFrame.Visible)
+        {
+            return false;
+        }
+
+        return ApplyCore(
+            _restingFrame,
+            queueHostBounds,
+            animate
+                ? EdgeCapsuleMotion.Animate(EdgeCapsuleTransitionReason.Drag)
+                : EdgeCapsuleMotion.Snap(EdgeCapsuleTransitionReason.Drag));
     }
 
     /// <summary>
@@ -370,6 +414,17 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
         _disposed = true;
         _transition = null;
         _root.AttachedToVisualTree -= OnAttachedToVisualTree;
+        if (_chrome is not null)
+        {
+            _chrome.BodyPointerPressed -= OnBodyPointerPressed;
+            _chrome.BodyPointerMoved -= OnBodyPointerMoved;
+            _chrome.BodyPointerReleased -= OnBodyPointerReleased;
+            _chrome.BodyPointerCaptureLost -= OnBodyPointerCaptureLost;
+        }
+        BodyPointerPressed = null;
+        BodyPointerMoved = null;
+        BodyPointerReleased = null;
+        BodyPointerCaptureLost = null;
         if (_visual is not null)
         {
             StopMotion(_visual);
