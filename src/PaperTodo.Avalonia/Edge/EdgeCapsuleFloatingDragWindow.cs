@@ -8,9 +8,13 @@ namespace PaperTodo.Avalonia.Edge;
 
 internal sealed class EdgeCapsuleFloatingDragWindow : Window
 {
+    private const uint WmNcHitTest = 0x0084;
+    private static readonly IntPtr HtTransparent = new(-1);
+
     private readonly Border _card;
     private readonly IBrush _normalBorder;
     private readonly IBrush _activeBorder;
+    private Win32Properties.CustomWndProcHookCallback? _wndProcHook;
 
     public EdgeCapsuleFloatingDragWindow(PaperData paper, AppState state)
     {
@@ -27,6 +31,7 @@ internal sealed class EdgeCapsuleFloatingDragWindow : Window
         Width = 238;
         Height = Math.Max(34, PaperLayoutDefaults.CapsuleHeight + 4);
         SizeToContent = SizeToContent.Manual;
+        IsHitTestVisible = false;
 
         var title = string.IsNullOrWhiteSpace(paper.Title)
             ? paper.Type == PaperTypes.Todo ? "Todo" : "Note"
@@ -54,6 +59,7 @@ internal sealed class EdgeCapsuleFloatingDragWindow : Window
         };
         Content = _card;
         Opacity = 0.94;
+        Opened += OnOpened;
     }
 
     public void MoveTo(DeviceScreenPoint pointer)
@@ -68,5 +74,43 @@ internal sealed class EdgeCapsuleFloatingDragWindow : Window
         _card.BorderBrush = ready ? _activeBorder : _normalBorder;
         _card.BorderThickness = ready ? new Thickness(2.5) : new Thickness(1.5);
         Opacity = ready ? 1 : 0.94;
+    }
+
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        if (_wndProcHook is not null)
+        {
+            return;
+        }
+
+        _wndProcHook = WndProc;
+        Win32Properties.AddWndProcHookCallback(this, _wndProcHook);
+    }
+
+    private IntPtr WndProc(
+        IntPtr hWnd,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam,
+        ref bool handled)
+    {
+        if (message != WmNcHitTest)
+        {
+            return IntPtr.Zero;
+        }
+
+        handled = true;
+        return HtTransparent;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        Opened -= OnOpened;
+        if (_wndProcHook is not null)
+        {
+            Win32Properties.RemoveWndProcHookCallback(this, _wndProcHook);
+            _wndProcHook = null;
+        }
+        base.OnClosed(e);
     }
 }
