@@ -51,8 +51,14 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
 
     public Control Root => _root;
 
+    public bool HasPreviewContent => _chrome?.HasPreviewContent == true;
+
     public EdgeCapsulePresentationFrame AppliedFrame { get; private set; } =
         EdgeCapsulePresentationFrame.Hidden;
+
+    public void SetTitle(string? title) => _chrome?.SetTitle(title);
+
+    public void SetPreviewContent(Control? content) => _chrome?.SetPreviewContent(content);
 
     public bool Apply(
         EdgeCapsulePresentationFrame frame,
@@ -60,7 +66,8 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
         EdgeCapsuleMotion motion)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (motion.Reason != EdgeCapsuleTransitionReason.Pointer)
+        if (motion.Reason != EdgeCapsuleTransitionReason.Pointer &&
+            frame.Surface != EdgeCapsuleSurfaceKind.DockedPreview)
         {
             _restingFrame = frame;
             var reset = EdgeCapsuleReducer.Reduce(
@@ -83,7 +90,8 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
     public bool UpdatePointerState(bool overInteractiveSurface, DeviceScreenRect queueHostBounds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!_restingFrame.Visible || _restingFrame.Surface is not (
+        if (AppliedFrame.Surface == EdgeCapsuleSurfaceKind.DockedPreview ||
+            !_restingFrame.Visible || _restingFrame.Surface is not (
                 EdgeCapsuleSurfaceKind.DockedResting or
                 EdgeCapsuleSurfaceKind.DockedHovered))
         {
@@ -172,15 +180,18 @@ internal sealed class EdgeCapsuleNodeHost : IDisposable
             nowTimestamp,
             Stopwatch.Frequency);
         var bodyWidthDip = frame.BodyWindowWidthDevice / Math.Max(1, frame.DpiScaleX);
+        var bodyHeightDip = frame.Bounds.Height / Math.Max(1, frame.DpiScaleY);
         var closeWidthDip = Math.Max(
             0,
             frame.Bounds.Width / Math.Max(1, frame.DpiScaleX) - bodyWidthDip);
         _chrome?.ApplyShape(
             frame.Edge,
             bodyWidthDip,
+            bodyHeightDip,
             closeWidthDip,
             frame.ContentOpacity,
-            frame.OutlineVisible);
+            frame.OutlineVisible,
+            frame.Surface);
         EnsureVisual();
 
         var scale = Math.Max(1, frame.DpiScaleX);

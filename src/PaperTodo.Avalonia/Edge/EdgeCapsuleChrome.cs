@@ -11,7 +11,10 @@ internal sealed class EdgeCapsuleChrome : Grid
 {
     private readonly Border _body;
     private readonly Border _close;
+    private readonly Grid _bodyContent;
     private readonly TextBlock _title;
+    private readonly ContentControl _previewHost;
+    private bool _previewVisible;
 
     public EdgeCapsuleChrome(AppState state)
     {
@@ -19,16 +22,7 @@ internal sealed class EdgeCapsuleChrome : Grid
         ClipToBounds = false;
         ColumnDefinitions = new ColumnDefinitions("Auto,Auto");
 
-        _body = new Border
-        {
-            Height = PaperLayoutDefaults.CapsuleHeight,
-            Background = palette.PaperBrush,
-            BorderBrush = palette.PaperBorderBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(EdgeCapsuleLayout.CornerRadius),
-            Padding = new Thickness(14, 0),
-            VerticalAlignment = VerticalAlignment.Top
-        };
+        _bodyContent = new Grid();
         _title = new TextBlock
         {
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -41,9 +35,34 @@ internal sealed class EdgeCapsuleChrome : Grid
                 OverallFontScales.Normalize(state.Zoom)),
             FontWeight = state.CapsuleTextBold ? FontWeight.SemiBold : FontWeight.Normal
         };
-        _body.Child = _title;
+        _previewHost = new ContentControl
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            IsVisible = false
+        };
+        _bodyContent.Children.Add(_title);
+        _bodyContent.Children.Add(_previewHost);
+
+        _body = new Border
+        {
+            Height = PaperLayoutDefaults.CapsuleHeight,
+            Background = palette.PaperBrush,
+            BorderBrush = palette.PaperBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(EdgeCapsuleLayout.CornerRadius),
+            Padding = new Thickness(14, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            ClipToBounds = true,
+            Child = _bodyContent
+        };
         _body.PointerPressed += (_, e) =>
         {
+            if (_previewVisible)
+            {
+                return;
+            }
+
             if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             {
                 BodyInvoked?.Invoke();
@@ -82,20 +101,41 @@ internal sealed class EdgeCapsuleChrome : Grid
     public event Action? BodyInvoked;
     public event Action? CloseInvoked;
 
+    public bool HasPreviewContent => _previewHost.Content is Control;
+
     public void SetTitle(string? title) => _title.Text = title ?? string.Empty;
+
+    public void SetPreviewContent(Control? content)
+    {
+        if (ReferenceEquals(_previewHost.Content, content))
+        {
+            return;
+        }
+
+        _previewHost.Content = content;
+    }
 
     public void ApplyShape(
         EdgeCapsuleEdge edge,
         double bodyWidthDip,
+        double bodyHeightDip,
         double closeWidthDip,
         double contentOpacity,
-        bool outlineVisible)
+        bool outlineVisible,
+        EdgeCapsuleSurfaceKind surface)
     {
         var radius = EdgeCapsuleLayout.CornerRadius;
+        _previewVisible = surface == EdgeCapsuleSurfaceKind.DockedPreview;
         _body.Width = Math.Max(1, bodyWidthDip);
+        _body.Height = Math.Max(1, bodyHeightDip);
         _body.Opacity = Math.Clamp(contentOpacity, 0, 1);
         _body.BorderThickness = outlineVisible ? new Thickness(2) : new Thickness(1);
+        _body.Padding = _previewVisible ? default : new Thickness(14, 0);
+        _title.IsVisible = !_previewVisible;
+        _previewHost.IsVisible = _previewVisible && _previewHost.Content is not null;
+
         _close.Width = Math.Max(0, closeWidthDip);
+        _close.Height = Math.Max(1, bodyHeightDip);
         _close.Opacity = closeWidthDip > 0 ? 1 : 0;
 
         _body.CornerRadius = edge == EdgeCapsuleEdge.Left

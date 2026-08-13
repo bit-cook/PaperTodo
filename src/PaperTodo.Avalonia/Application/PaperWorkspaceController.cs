@@ -9,7 +9,7 @@ using PaperTodo.PluginHost;
 
 namespace PaperTodo.Avalonia.Application;
 
-internal sealed class PaperWorkspaceController : IApplicationWorkspace
+internal sealed partial class PaperWorkspaceController : IApplicationWorkspace
 {
     private readonly StateStore _stateStore;
     private readonly AvaloniaStateStorePlatform _stateStorePlatform;
@@ -50,6 +50,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
 
         _reminderTimer = new DispatcherTimer();
         _reminderTimer.Tick += OnReminderTimerTick;
+        InitializeEdgeCapsulePreviewRuntime();
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -78,6 +79,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         cancellationToken.ThrowIfCancellationRequested();
         RestartGlobalHotkeys();
         RefreshReminderSchedule();
+        EnsureEdgeCapsulePreviewRuntimeState();
     }
 
     public async ValueTask SaveWithoutStartingAsync(CancellationToken cancellationToken)
@@ -138,6 +140,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             await screens.RequestScreenDetails();
             if (_started && !_disposed && ReferenceEquals(screens, _observedScreens))
             {
+                ResetEdgeCapsulePreviewState(clearContent: true);
                 _edges.CloseAll();
                 ArrangeEdgeCapsules(animate: false);
             }
@@ -240,6 +243,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             }
         }
 
+        ResetEdgeCapsulePreviewState(clearContent: true);
         _edges.CloseAll();
         ArrangeEdgeCapsules(animate: false);
         SaveCurrentState();
@@ -302,6 +306,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
         _reminderTimer.Stop();
+        StopEdgeCapsulePreviewRuntime();
         CloseReminderToast();
         CloseSettings();
         DetachScreens();
@@ -368,7 +373,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                 QueueSaveCurrentState();
             }
         };
-        surface.Changed += OnPaperChanged;
+        surface.Changed += () => OnPaperChanged(paper);
         surface.NewTodoRequested += () => CreatePaper(PaperTypes.Todo, visible: true);
         surface.NewNoteRequested += () => CreatePaper(PaperTypes.Note, visible: true);
         surface.CloseRequested += () =>
@@ -387,10 +392,11 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         return surface;
     }
 
-    private void OnPaperChanged()
+    private void OnPaperChanged(PaperData paper)
     {
         QueueSaveCurrentState();
         RefreshReminderSchedule();
+        RefreshEdgeCapsulePreviewContent(paper);
     }
 
     private void HidePaper(PaperData paper, IPaperSurface surface)
@@ -454,12 +460,16 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         SaveCurrentState();
     }
 
-    private void ArrangeEdgeCapsules(bool animate)
+    private void ArrangeEdgeCapsules(
+        bool animate,
+        EdgeCapsuleTransitionReason reason = EdgeCapsuleTransitionReason.Placement)
     {
         var state = _state;
         if (state is null || !state.UseCapsuleMode || !state.UseDeepCapsuleMode)
         {
+            ResetEdgeCapsulePreviewState(clearContent: true);
             _edges.CloseAll();
+            EnsureEdgeCapsulePreviewRuntimeState();
             return;
         }
 
@@ -468,7 +478,8 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             .ToArray();
         var members = collapsed.Select(paper =>
             new EdgeCapsuleQueueMember(paper.Id, QueueStorageKey(paper)));
-        var plan = EdgeCapsuleQueueCoordinator.Build(members, state.UseCapsuleCollapseAll);
+        var basePlan = EdgeCapsuleQueueCoordinator.Build(members, state.UseCapsuleCollapseAll);
+        var plan = ApplyEdgeCapsulePreviewLayout(basePlan);
         var desiredQueues = plan.Queues.ToDictionary(
             queue => ParseQueueKey(queue.Key).Normalize(),
             queue => queue.Papers.Select(paper => paper.Id).ToHashSet(StringComparer.Ordinal));
@@ -504,14 +515,15 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
             foreach (var queuePaper in queue.Papers)
             {
                 var paper = collapsed.First(item => item.Id == queuePaper.Id);
-                if (!surface.TryGetNode(paper.Id, out _))
+                if (!surface.TryGetNode(paper.Id, out var node))
                 {
                     var chrome = new EdgeCapsuleChrome(state);
                     chrome.SetTitle(string.IsNullOrWhiteSpace(paper.Title) ? paper.Type : paper.Title);
                     chrome.BodyInvoked += () => ExpandCollapsedPaper(paper);
                     chrome.CloseInvoked += () => HideCollapsedPaper(paper);
-                    surface.AttachPaper(paper.Id, chrome);
+                    node = surface.AttachPaper(paper.Id, chrome);
                 }
+                PrepareEdgeCapsulePreviewNode(paper, node);
 
                 var placement = plan.Placements[paper.Id];
                 var model = EdgeCapsuleReducer.Reduce(
@@ -520,6 +532,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                         placement,
                         EdgeCapsulePaperForm.Collapsed,
                         retracted: false)).Model;
+                model = ApplyEdgeCapsulePreviewState(paper, model);
                 var margin = state.DeepCapsuleQueueStartTopMargins.TryGetValue(
                     queue.Key,
                     out var stored)
@@ -528,6 +541,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                 var maximumPreviewHeight = Math.Min(
                     EdgeCapsulePreviewSize.MaximumHeightDip,
                     monitor.LocalWorkAreaDip.Height);
+                var previewSize = ResolveEdgeCapsulePreviewSize(paper, monitor);
                 var layout = EdgeCapsuleLayoutService.Calculate(new EdgeCapsuleLayoutFacts(
                     monitor,
                     queueKey.Edge,
@@ -543,8 +557,8 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                         PaperLayoutDefaults.CapsuleHeight,
                         maximumPreviewHeight),
                     HeightDip: PaperLayoutDefaults.CapsuleHeight,
-                    PreviewWidthDip: EdgeCapsulePreviewSize.MinimumWidthDip,
-                    PreviewHeightDip: EdgeCapsulePreviewSize.MinimumHeightDip,
+                    PreviewWidthDip: previewSize.WidthDip,
+                    PreviewHeightDip: previewSize.HeightDip,
                     MaximumPreviewHeightDip: maximumPreviewHeight,
                     UsesFixedMotionHost: true,
                     CloseSegmentActsAsContent: false,
@@ -552,11 +566,13 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
                     ForcedContentOpacity: null));
                 var target = EdgeCapsuleTargetPlanner.Calculate(model, layout).Docked;
                 var motion = animate
-                    ? EdgeCapsuleMotion.Animate(EdgeCapsuleTransitionReason.Placement)
-                    : EdgeCapsuleMotion.Snap(EdgeCapsuleTransitionReason.Placement);
+                    ? EdgeCapsuleMotion.Animate(reason)
+                    : EdgeCapsuleMotion.Snap(reason);
                 surface.Apply(paper.Id, target.ToFrame(), motion);
             }
         }
+
+        EnsureEdgeCapsulePreviewRuntimeState();
     }
 
     private void OnReminderTimerTick(object? sender, EventArgs e)
@@ -804,6 +820,7 @@ internal sealed class PaperWorkspaceController : IApplicationWorkspace
         _disposed = true;
         _saveTimer.Stop();
         _reminderTimer.Stop();
+        StopEdgeCapsulePreviewRuntime();
         _globalHotkeys?.Dispose();
         _globalHotkeys = null;
         CloseReminderToast();
