@@ -132,14 +132,14 @@ internal sealed partial class PaperWorkspaceController
         {
             _edgePreviewActivationIntent = null;
             _edgePreviewCorridorExitIntent = null;
-            if (!TryResolveInitialEdgePreviewTarget(pointer, out var targetPaperId) ||
-                IsEdgeCapsulePreviewLayoutSuppressedFor(targetPaperId, pointer))
+            if (!TryResolveInitialEdgePreviewTarget(pointer, out var initialTargetPaperId) ||
+                IsEdgeCapsulePreviewLayoutSuppressedFor(initialTargetPaperId, pointer))
             {
                 return;
             }
 
-            ObserveEdgeCapsulePreviewPointer(targetPaperId, pointer);
-            OpenOrTransferEdgeCapsulePreview(targetPaperId, pointer);
+            ObserveEdgeCapsulePreviewPointer(initialTargetPaperId, pointer);
+            OpenOrTransferEdgeCapsulePreview(initialTargetPaperId, pointer);
             return;
         }
 
