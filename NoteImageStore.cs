@@ -405,7 +405,7 @@ public sealed class NoteImageStore : IDisposable
         {
             throw new InvalidDataException(Strings.Format("ImageImportTooLargeCompressionDisabled", MaxImageBytes / 1024 / 1024));
         }
-        if (!TryReadBitmapInfo(bytes, out var frame, out var width, out var height))
+        if (!TryReadBitmapMetadata(bytes, out var width, out var height))
         {
             throw new InvalidDataException(Strings.Get("ImageImportUnsupported"));
         }
@@ -419,8 +419,8 @@ public sealed class NoteImageStore : IDisposable
             return new PreparedImage(bytes, mime, originalName, width, height);
         }
 
-        var encoded = CompressImage(frame, bytes, mime);
-        if (!TryReadBitmapInfo(encoded.Bytes, out _, out width, out height))
+        var encoded = CompressImageBytes(bytes, mime, width, height);
+        if (!TryReadBitmapMetadata(encoded.Bytes, out width, out height))
         {
             throw new InvalidDataException(Strings.Get("ImageImportCompressionFailed"));
         }
@@ -472,7 +472,7 @@ public sealed class NoteImageStore : IDisposable
         }
 
         var encoded = CompressImage(source, originalBytes, "image/png");
-        if (!TryReadBitmapInfo(encoded.Bytes, out _, out var width, out var height))
+        if (!TryReadBitmapMetadata(encoded.Bytes, out var width, out var height))
         {
             throw new InvalidDataException(Strings.Get("ImageImportCompressionFailed"));
         }
@@ -891,7 +891,7 @@ public sealed class NoteImageStore : IDisposable
         int height = 0)
     {
         if ((width <= 0 || height <= 0) &&
-            !TryReadBitmapInfo(bytes, out _, out width, out height))
+            !TryReadBitmapMetadata(bytes, out width, out height))
         {
             throw new InvalidDataException(Strings.Get("ImageImportUnsupported"));
         }
@@ -1077,6 +1077,91 @@ public sealed class NoteImageStore : IDisposable
         }
     }
 
+    private static (byte[] Bytes, string Mime) CompressImageBytes(
+        byte[] originalBytes,
+        string originalMime,
+        int sourceWidth,
+        int sourceHeight)
+    {
+        if (originalMime is "image/gif" or "image/tiff")
+        {
+            throw new InvalidDataException(Strings.Get("ImageImportCompressionUnsafe"));
+        }
+
+        try
+        {
+            var resized = DecodeForCompression(originalBytes, sourceWidth, sourceHeight);
+            (byte[] Bytes, string Mime) encoded;
+            if (string.Equals(originalMime, "image/jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                encoded = (EncodeJpeg(resized, 82), "image/jpeg");
+            }
+            else
+            {
+                var png = EncodePng(resized);
+                encoded = (png, "image/png");
+
+                if (png.Length > MaxImageBytes && !HasAlphaChannel(resized))
+                {
+                    var jpeg = EncodeJpeg(resized, 82);
+                    if (jpeg.Length < png.Length)
+                    {
+                        encoded = (jpeg, "image/jpeg");
+                    }
+                }
+            }
+
+            if (encoded.Bytes.Length >= originalBytes.Length)
+            {
+                throw new InvalidDataException(Strings.Get("ImageImportCompressionNotSmaller"));
+            }
+
+            if (encoded.Bytes.Length > MaxImageBytes)
+            {
+                throw new InvalidDataException(Strings.Format("ImageImportCompressedTooLarge", MaxImageBytes / 1024 / 1024));
+            }
+
+            return encoded;
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException(Strings.Get("ImageImportCompressionFailed"), ex);
+        }
+    }
+
+    private static BitmapSource DecodeForCompression(
+        byte[] bytes,
+        int sourceWidth,
+        int sourceHeight)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+
+        if (sourceWidth > AutoCompressedDimension || sourceHeight > AutoCompressedDimension)
+        {
+            if (sourceWidth >= sourceHeight)
+            {
+                bitmap.DecodePixelWidth = AutoCompressedDimension;
+            }
+            else
+            {
+                bitmap.DecodePixelHeight = AutoCompressedDimension;
+            }
+        }
+
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+
+        return bitmap;
+    }
+
     private static (byte[] Bytes, string Mime) CompressImage(
         BitmapSource source,
         byte[] originalBytes,
@@ -1260,21 +1345,19 @@ public sealed class NoteImageStore : IDisposable
         return stream.ToArray();
     }
 
-    private static bool TryReadBitmapInfo(byte[] bytes, out BitmapFrame frame, out int width, out int height)
+    private static bool TryReadBitmapMetadata(byte[] bytes, out int width, out int height)
     {
-        frame = null!;
         width = 0;
         height = 0;
 
         try
         {
-            using var stream = new MemoryStream(bytes);
+            using var stream = new MemoryStream(bytes, writable: false);
             var decoder = BitmapDecoder.Create(
                 stream,
-                BitmapCreateOptions.PreservePixelFormat,
-                BitmapCacheOption.OnLoad);
-            frame = decoder.Frames[0];
-            frame.Freeze();
+                BitmapCreateOptions.DelayCreation,
+                BitmapCacheOption.None);
+            var frame = decoder.Frames[0];
             width = frame.PixelWidth;
             height = frame.PixelHeight;
             return width > 0 && height > 0;
