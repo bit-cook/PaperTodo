@@ -508,15 +508,19 @@ public sealed partial class PaperWindow
             return itemMenu;
         }
 
-        void AttachItemContextMenu(FrameworkElement element)
+        ContextMenu? itemMenu = null;
+        row.PreviewMouseRightButtonDown += (_, _) => text.Focus();
+        row.PreviewMouseRightButtonUp += (_, e) =>
         {
-            element.ContextMenu = CreateItemMenu();
-            element.PreviewMouseRightButtonDown += (_, _) => text.Focus();
-        }
-
-        AttachItemContextMenu(row);
-        AttachItemContextMenu(check);
-        AttachItemContextMenu(text);
+            itemMenu ??= CreateItemMenu();
+            itemMenu.Placement = PlacementMode.MousePoint;
+            itemMenu.PlacementTarget = row;
+            if (!itemMenu.IsOpen)
+            {
+                itemMenu.IsOpen = true;
+            }
+            e.Handled = true;
+        };
 
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
@@ -705,7 +709,6 @@ public sealed partial class PaperWindow
                 }
                 e.Handled = true;
             };
-            AttachItemContextMenu(linkButton);
 
             Grid.SetColumn(linkButton, 2);
             grid.Children.Add(linkButton);
@@ -757,7 +760,6 @@ public sealed partial class PaperWindow
             CaptureMouse();
             e.Handled = true;
         };
-        AttachItemContextMenu(handle);
 
         Grid.SetColumn(handle, 3);
         grid.Children.Add(handle);

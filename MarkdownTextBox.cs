@@ -29,6 +29,7 @@ public sealed partial class MarkdownTextBox : TextEditor
     private bool _acceptsReturn = true;
     private bool _acceptsTab = true;
     private bool _isPreviewMode;
+    private bool _previewModeInitialized;
     private bool _isPostPasteRefreshQueued;
     private bool _isImageRenderRedrawQueued;
     private bool _isMarkdownSuffixRedrawQueued;
@@ -183,6 +184,12 @@ public sealed partial class MarkdownTextBox : TextEditor
 
     public void SetPreviewMode(bool isPreviewMode)
     {
+        if (_previewModeInitialized && _isPreviewMode == isPreviewMode)
+        {
+            return;
+        }
+
+        _previewModeInitialized = true;
         _isPreviewMode = isPreviewMode;
         IsReadOnly = isPreviewMode;
         Focusable = !isPreviewMode;
@@ -193,9 +200,15 @@ public sealed partial class MarkdownTextBox : TextEditor
 
     public void SetMarkdownRenderMode(string mode)
     {
-        _markdownRenderMode = MarkdownRenderModes.IsValid(mode)
+        var normalized = MarkdownRenderModes.IsValid(mode)
             ? mode
             : MarkdownRenderModes.Enhanced;
+        if (_markdownRenderMode == normalized)
+        {
+            return;
+        }
+
+        _markdownRenderMode = normalized;
         RefreshVisualStyle();
     }
 
