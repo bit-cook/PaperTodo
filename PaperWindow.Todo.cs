@@ -509,16 +509,34 @@ public sealed partial class PaperWindow
         }
 
         ContextMenu? itemMenu = null;
-        row.PreviewMouseRightButtonDown += (_, _) => text.Focus();
-        row.PreviewMouseRightButtonUp += (_, e) =>
+
+        void OpenItemMenu(PlacementMode placement)
         {
             itemMenu ??= CreateItemMenu();
-            itemMenu.Placement = PlacementMode.MousePoint;
+            itemMenu.Placement = placement;
             itemMenu.PlacementTarget = row;
             if (!itemMenu.IsOpen)
             {
                 itemMenu.IsOpen = true;
             }
+        }
+
+        row.PreviewMouseRightButtonDown += (_, _) => text.Focus();
+        row.PreviewMouseRightButtonUp += (_, e) =>
+        {
+            OpenItemMenu(PlacementMode.MousePoint);
+            e.Handled = true;
+        };
+        row.PreviewKeyDown += (_, e) =>
+        {
+            var openFromKeyboard = e.Key == Key.Apps ||
+                (e.Key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift);
+            if (!openFromKeyboard)
+            {
+                return;
+            }
+
+            OpenItemMenu(PlacementMode.Bottom);
             e.Handled = true;
         };
 
