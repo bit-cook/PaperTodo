@@ -73,10 +73,10 @@ public sealed partial class MarkdownTextBox
         _imageResizeSettleTimer.Start();
     }
 
-    private void CompleteImageResizePreview()
+    private void CompleteImageResizePreview(bool force = false)
     {
         _imageResizeSettleTimer?.Stop();
-        if (_imageRenderingSuspended || !_isImageResizePreview)
+        if (_imageRenderingSuspended || (!force && !_isImageResizePreview))
         {
             return;
         }
@@ -95,7 +95,7 @@ public sealed partial class MarkdownTextBox
             return;
         }
 
-        CompleteImageResizePreview();
+        CompleteImageResizePreview(force: true);
     }
 
     private void QueueImageViewportPreviewLayout()
