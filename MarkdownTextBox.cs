@@ -232,9 +232,6 @@ public sealed partial class MarkdownTextBox : TextEditor
         TextArea.TextView.LineTransformers.Remove(_markerColorizer);
         TextArea.TextView.LineTransformers.Add(_markerColorizer);
         RefreshTextView();
-        Dispatcher.BeginInvoke(
-            (Action)RefreshTextView,
-            System.Windows.Threading.DispatcherPriority.Render);
     }
 
     public void RefreshTypography()
