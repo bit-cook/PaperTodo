@@ -20,7 +20,7 @@ public static class AppTypography
     private static string _textRenderingProfile = TextRenderingProfiles.Standard;
     private static double _scale = 1.0;
 
-    public static XmlLanguage Language { get; } = XmlLanguage.GetLanguage(CultureInfo.CurrentUICulture.IetfLanguageTag);
+    public static XmlLanguage Language => XmlLanguage.GetLanguage(CultureInfo.CurrentUICulture.IetfLanguageTag);
 
     public static FontFamily UiFontFamily => _customFontFace?.Family ?? ResolveUiFontFamily();
 
@@ -178,122 +178,80 @@ public static class AppTypography
         {
             UiFontPresets.YaHei => new FontFamily(YaHeiFontFamilyName),
             UiFontPresets.DengXian => new FontFamily(DengXianFontFamilyName),
-            _ => DefaultBodyFontFamily()
+            _ => new FontFamily(DefaultContentFontFamilyName())
         };
     }
 
-    private static FontFamily DefaultBodyFontFamily()
+    private static string DefaultContentFontFamilyName()
     {
-        var cultureName = CultureInfo.CurrentUICulture.Name;
-        var language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-
-        return language switch
+        var lang = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+        return lang switch
         {
-            "zh" when cultureName.StartsWith("zh-Hant", StringComparison.OrdinalIgnoreCase) ||
-                      cultureName.Equals("zh-TW", StringComparison.OrdinalIgnoreCase) ||
-                      cultureName.Equals("zh-HK", StringComparison.OrdinalIgnoreCase) ||
-                      cultureName.Equals("zh-MO", StringComparison.OrdinalIgnoreCase)
-                => new FontFamily($"Segoe UI, Microsoft JhengHei UI, Microsoft JhengHei, Microsoft YaHei UI, Microsoft YaHei, {SymbolFallback}"),
-            "zh" => new FontFamily($"Segoe UI, Microsoft YaHei UI, Microsoft YaHei, {SymbolFallback}"),
-            "ja" => new FontFamily($"Segoe UI, Yu Gothic UI, Meiryo, {SymbolFallback}"),
-            "ko" => new FontFamily($"Segoe UI, Malgun Gothic, {SymbolFallback}"),
-            _ => new FontFamily($"Segoe UI, {SymbolFallback}")
+            "ja" => "Segoe UI, Yu Gothic UI, Meiryo, Microsoft YaHei UI, Microsoft YaHei, Malgun Gothic, " + SymbolFallback,
+            "ko" => "Segoe UI, Malgun Gothic, Microsoft YaHei UI, Microsoft YaHei, Yu Gothic UI, Meiryo, " + SymbolFallback,
+            _ => "Segoe UI, Microsoft YaHei UI, Microsoft YaHei, Microsoft JhengHei UI, Microsoft JhengHei, Yu Gothic UI, Malgun Gothic, Meiryo, " + SymbolFallback
         };
     }
 
-    private static CustomFontFace? TryLoadCustomFontFaceFromCandidates(IEnumerable<string> candidates)
+    private static IEnumerable<string> CustomRegularFontCandidates()
     {
-        foreach (var path in candidates)
+        yield return "papertodo.ttf";
+        yield return "papertodo.otf";
+    }
+
+    private static IEnumerable<string> CustomBoldFontCandidates()
+    {
+        yield return "papertodo_bold.ttf";
+        yield return "papertodo_bold.otf";
+        yield return "PaperTodo_Bold.ttf";
+        yield return "PaperTodo_Bold.otf";
+    }
+
+    private static CustomFontFace? TryLoadCustomFontFaceFromCandidates(IEnumerable<string> fileNames)
+    {
+        foreach (var fileName in fileNames)
         {
-            try
+            var face = TryLoadCustomFontFace(fileName);
+            if (face != null)
             {
-                if (!File.Exists(path))
-                {
-                    continue;
-                }
-
-                var fontUri = new Uri(path, UriKind.Absolute);
-                var glyphTypeface = new GlyphTypeface(fontUri);
-                var familyName = PreferredFamilyName(glyphTypeface);
-                if (string.IsNullOrWhiteSpace(familyName))
-                {
-                    continue;
-                }
-
-                var directory = Path.GetDirectoryName(path);
-                if (string.IsNullOrWhiteSpace(directory))
-                {
-                    continue;
-                }
-
-                var baseUri = new Uri(AppendDirectorySeparator(directory), UriKind.Absolute);
-                return new CustomFontFace(
-                    new FontFamily(baseUri, $"./#{familyName}"),
-                    glyphTypeface.Weight);
-            }
-            catch
-            {
-                // Invalid or unsupported custom fonts must not affect startup.
+                return face;
             }
         }
 
         return null;
     }
 
-    private static IEnumerable<string> CustomRegularFontCandidates()
+    private static CustomFontFace? TryLoadCustomFontFace(string fileName)
     {
-        yield return Path.Combine(AppContext.BaseDirectory, "papertodo.ttf");
-        yield return Path.Combine(AppContext.BaseDirectory, "papertodo.otf");
-    }
-
-    /// <summary>
-    /// Same folder as the app: papertodo_bold / PaperTodo_Bold (+ ttf/otf).
-    /// </summary>
-    private static IEnumerable<string> CustomBoldFontCandidates()
-    {
-        var dir = AppContext.BaseDirectory;
-        foreach (var name in new[]
-                 {
-                     "papertodo_bold",
-                     "papertodo-bold",
-                     "PaperTodo_Bold",
-                     "PaperTodo-Bold"
-                 })
+        try
         {
-            yield return Path.Combine(dir, name + ".ttf");
-            yield return Path.Combine(dir, name + ".otf");
-        }
-    }
-
-    private static string PreferredFamilyName(GlyphTypeface glyphTypeface)
-    {
-        var culture = CultureInfo.CurrentUICulture;
-        if (glyphTypeface.Win32FamilyNames.TryGetValue(culture, out var localized))
-        {
-            return localized;
-        }
-
-        var neutral = culture.TwoLetterISOLanguageName;
-        foreach (var pair in glyphTypeface.Win32FamilyNames)
-        {
-            if (pair.Key.TwoLetterISOLanguageName == neutral)
+            var path = Path.Combine(AppContext.BaseDirectory, fileName);
+            if (!File.Exists(path))
             {
-                return pair.Value;
+                return null;
             }
-        }
 
-        if (glyphTypeface.Win32FamilyNames.TryGetValue(CultureInfo.GetCultureInfo("en-us"), out var english))
+            var collection = Fonts.GetFontFamilies(new Uri(path, UriKind.Absolute));
+            var family = collection.FirstOrDefault();
+            if (family == null)
+            {
+                return null;
+            }
+
+            var weight = FontWeights.Normal;
+            foreach (var typeface in family.GetTypefaces())
+            {
+                if (typeface.Weight.ToOpenTypeWeight() > weight.ToOpenTypeWeight())
+                {
+                    weight = typeface.Weight;
+                }
+            }
+
+            return new CustomFontFace(family, weight);
+        }
+        catch
         {
-            return english;
+            return null;
         }
-
-        return glyphTypeface.Win32FamilyNames.Values.FirstOrDefault() ?? "";
-    }
-
-    private static string AppendDirectorySeparator(string path)
-    {
-        return path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
-            ? path
-            : path + Path.DirectorySeparatorChar;
     }
 }
