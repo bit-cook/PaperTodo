@@ -34,6 +34,21 @@ public sealed partial class AppController
             SetUiLanguage);
     }
 
+    private UIElement CreateUiLanguageSettingsRow()
+    {
+        var row = CompactSettingsField(
+            UiLanguageText.SettingLabel,
+            CreateUiLanguageSelector(),
+            editorWidth: 132,
+            topMargin: 4);
+        if (row is FrameworkElement element)
+        {
+            element.ToolTip = BuildSettingsHintTooltip(UiLanguageText.SettingTip);
+            ToolTipPreferences.SetAlwaysEnabled(element, true);
+        }
+        return row;
+    }
+
     private UIElement CreateSettingsSelect(
         (string Key, string Label)[] choices,
         string selectedKey,
