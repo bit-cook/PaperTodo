@@ -12,6 +12,8 @@ namespace PaperTodo;
 public partial class App : Application
 {
     private const long MaxCrashLogBytes = 100 * 1024;
+    private static readonly CultureInfo SystemCulture = CultureInfo.CurrentCulture;
+    private static readonly CultureInfo SystemUiCulture = CultureInfo.CurrentUICulture;
     private static readonly HashSet<string> SharedDesktopRuntimeAssemblies = new(StringComparer.OrdinalIgnoreCase)
     {
         "System.Windows.Forms",
@@ -65,7 +67,7 @@ public partial class App : Application
         }
 
         var startupCommand = StartupCommand.Parse(e.Args);
-        ApplyStartupCultureOverride(startupCommand.DefaultLanguage);
+        ApplyBuildCultureOverride();
 
         // Register global unhandled exception handlers
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -92,6 +94,7 @@ public partial class App : Application
         try
         {
             _controller = new AppController();
+            ApplyConfiguredCulture(_controller.ConfiguredUiLanguage);
         }
         catch (Exception ex)
         {
@@ -186,59 +189,33 @@ public partial class App : Application
         _controller?.ExecuteStartupCommand(command);
     }
 
-    private static void ApplyStartupCultureOverride(string? defaultLanguage)
+    private static void ApplyBuildCultureOverride()
     {
-        if (TryResolveStartupCulture(defaultLanguage, out var startupCulture))
-        {
-            ApplyCulture(startupCulture);
-            return;
-        }
-
 #if PAPERTODO_DEFAULT_ENGLISH
-        ApplyCulture(CultureInfo.GetCultureInfo("en-US"));
+        var culture = CultureInfo.GetCultureInfo("en-US");
+        ApplyCulture(culture, culture);
 #endif
     }
 
-    private static bool TryResolveStartupCulture(string? language, out CultureInfo culture)
+    private static void ApplyConfiguredCulture(string? uiLanguage)
     {
-        culture = null!;
-        var value = (language ?? "").Trim().Replace('_', '-');
-        if (string.IsNullOrWhiteSpace(value))
+        var normalized = UiLanguages.Normalize(uiLanguage);
+        if (normalized == UiLanguages.System)
         {
-            return false;
+            ApplyCulture(SystemCulture, SystemUiCulture);
+            return;
         }
 
-        try
-        {
-            var requested = CultureInfo.GetCultureInfo(value);
-            if (requested.TwoLetterISOLanguageName is not ("zh" or "en" or "ja" or "ko"))
-            {
-                return false;
-            }
-
-            culture = requested.IsNeutralCulture
-                ? CultureInfo.GetCultureInfo(requested.TwoLetterISOLanguageName switch
-                {
-                    "zh" => "zh-CN",
-                    "ja" => "ja-JP",
-                    "ko" => "ko-KR",
-                    _ => "en-US"
-                })
-                : requested;
-            return true;
-        }
-        catch (CultureNotFoundException)
-        {
-            return false;
-        }
+        var culture = CultureInfo.GetCultureInfo(normalized);
+        ApplyCulture(culture, culture);
     }
 
-    private static void ApplyCulture(CultureInfo culture)
+    private static void ApplyCulture(CultureInfo culture, CultureInfo uiCulture)
     {
         CultureInfo.DefaultThreadCurrentCulture = culture;
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        CultureInfo.DefaultThreadCurrentUICulture = uiCulture;
         CultureInfo.CurrentCulture = culture;
-        CultureInfo.CurrentUICulture = culture;
+        CultureInfo.CurrentUICulture = uiCulture;
     }
 
     private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs ev)
