@@ -20,7 +20,7 @@ internal static partial class Program
                     Pump();
                     Equal(source, editor.Box.Text, "loading Full keeps source");
                     editor.Box.SetPreviewMode(true);
-                    editor.Box.SetMarkdownRenderMode(MarkdownRenderModes.Enhanced);
+                    editor.Box.SetMarkdownRenderMode(MarkdownRenderModes.Basic);
                     editor.Box.SetMarkdownRenderMode(MarkdownRenderModes.Full);
                     editor.Box.SetPreviewMode(false);
                     Pump();
@@ -94,7 +94,7 @@ internal static partial class Program
             Pump();
             var point = TaskCheckBoxCenter(box);
 
-            box.SetMarkdownRenderMode(MarkdownRenderModes.Enhanced);
+            box.SetMarkdownRenderMode(MarkdownRenderModes.Basic);
             Pump();
             Require(!box.TryToggleRenderedTaskCheckBoxAtPoint(point), "Enhanced mode has no rendered task interaction");
             Equal(source, box.Text, "Enhanced mode leaves source untouched");
@@ -138,7 +138,7 @@ internal static partial class Program
                 box.CaretOffset = source.Length;
                 Pump();
                 Near(initialWidth, FirstLineWidth(box), "leaving restores initial width");
-                box.SetMarkdownRenderMode(MarkdownRenderModes.Enhanced);
+                box.SetMarkdownRenderMode(MarkdownRenderModes.Basic);
                 Pump();
                 Require(FirstLineWidth(box) > initialWidth, "Enhanced shows source syntax");
                 box.SetMarkdownRenderMode(MarkdownRenderModes.Full);
@@ -171,7 +171,7 @@ internal static partial class Program
                 Require(!MarkdownSemanticReveal.HasRevealOnLine(
                     snapshot, source, 0, 0, new MarkdownCaretReveal(source.Length, 0)),
                     "plain ordered item does not start a syntax fade");
-                foreach (var mode in new[] { MarkdownRenderModes.Full, MarkdownRenderModes.Enhanced })
+                foreach (var mode in new[] { MarkdownRenderModes.Full, MarkdownRenderModes.Basic })
                 {
                     box.SetMarkdownRenderMode(mode);
                     foreach (var preview in new[] { true, false, true })

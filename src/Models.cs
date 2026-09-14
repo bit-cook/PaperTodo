@@ -31,10 +31,7 @@ public static class MarkdownRenderModes
     public const string Basic = "basic";
     public const string Full = "full";
 
-    // Old builds persisted "enhanced" as a separate mode. It now migrates to Basic.
-    // Keep this alias equal to Basic so existing enhanced-only presentation checks immediately
-    // become the new Basic behavior without preserving a fourth runtime state.
-    public const string Enhanced = Basic;
+    // Old builds persisted "enhanced" as a separate mode. Keep only the wire token for migration.
     private const string LegacyEnhanced = "enhanced";
 
     public static bool IsValid(string? mode)

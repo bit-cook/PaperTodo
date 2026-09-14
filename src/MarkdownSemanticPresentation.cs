@@ -61,7 +61,7 @@ internal sealed partial class MarkdownSemanticPresentation : IDisposable
     private bool FadeSyntax =>
         string.Equals(
             _editor.MarkdownRenderMode,
-            MarkdownRenderModes.Enhanced,
+            MarkdownRenderModes.Basic,
             StringComparison.Ordinal) &&
         _editor.IsPreviewMode;
 

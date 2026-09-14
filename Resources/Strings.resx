@@ -101,9 +101,6 @@
   <data name="MarkdownRenderBasic" xml:space="preserve">
     <value>基础</value>
   </data>
-  <data name="MarkdownRenderEnhanced" xml:space="preserve">
-    <value>增强</value>
-  </data>
   <data name="MarkdownRenderFull" xml:space="preserve">
     <value>完全渲染</value>
   </data>

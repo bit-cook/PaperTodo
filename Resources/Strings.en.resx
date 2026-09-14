@@ -94,9 +94,6 @@ Error: {0}</value>
   <data name="MarkdownRenderBasic" xml:space="preserve">
     <value>Basic</value>
   </data>
-  <data name="MarkdownRenderEnhanced" xml:space="preserve">
-    <value>Enhanced</value>
-  </data>
   <data name="MarkdownRenderFull" xml:space="preserve">
     <value>Full Render</value>
   </data>

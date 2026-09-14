@@ -94,9 +94,6 @@ PaperTodo를 수동으로 다시 여세요. 문제가 반복되면 PC를 다시 
   <data name="MarkdownRenderBasic" xml:space="preserve">
     <value>기본</value>
   </data>
-  <data name="MarkdownRenderEnhanced" xml:space="preserve">
-    <value>강화</value>
-  </data>
   <data name="MarkdownRenderFull" xml:space="preserve">
     <value>전체 렌더링</value>
   </data>

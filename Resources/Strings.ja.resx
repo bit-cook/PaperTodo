@@ -94,9 +94,6 @@ PaperTodo を手動でもう一度開いてください。問題が繰り返さ�
   <data name="MarkdownRenderBasic" xml:space="preserve">
     <value>基本</value>
   </data>
-  <data name="MarkdownRenderEnhanced" xml:space="preserve">
-    <value>強化</value>
-  </data>
   <data name="MarkdownRenderFull" xml:space="preserve">
     <value>完全レンダリング</value>
   </data>

@@ -233,8 +233,6 @@ static void MarkdownModesMigrateAndRoundTrip()
 {
     Assert(new AppState().MarkdownRenderMode == MarkdownRenderModes.Basic,
         "new state should default to Basic");
-    Assert(MarkdownRenderModes.Enhanced == MarkdownRenderModes.Basic,
-        "old Enhanced behavior should be the new Basic behavior");
     var cases = new (string? Input, string Expected)[]
     {
         ("\"off\"", MarkdownRenderModes.Off),

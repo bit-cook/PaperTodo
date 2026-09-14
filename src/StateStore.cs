@@ -521,7 +521,7 @@ public sealed class StateStore
 
         if (!MarkdownRenderModes.IsValid(state.MarkdownRenderMode))
         {
-            state.MarkdownRenderMode = MarkdownRenderModes.Enhanced;
+            state.MarkdownRenderMode = MarkdownRenderModes.Basic;
         }
 
         state.ExternalMarkdownExtension = ExternalMarkdownFileExtensions.Normalize(state.ExternalMarkdownExtension);
