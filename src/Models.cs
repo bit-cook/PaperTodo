@@ -420,7 +420,6 @@ public sealed class AppState
     public string MarkdownRenderMode
     {
         get => _markdownRenderMode;
-        // Normalize at the data boundary so loading, restoring and assigning legacy values agree.
         set => _markdownRenderMode = MarkdownRenderModes.Normalize(value);
     }
     public string ImageReferenceTextMode { get; set; } = ImageReferenceTextModes.Always;
