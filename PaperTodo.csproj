@@ -27,7 +27,7 @@
     <PaperTodoLmdbLibrary>$(MSBuildProjectDirectory)\native\lmdb\bin\win-x64\papertodo_lmdb.dll</PaperTodoLmdbLibrary>
     <OutputPath>$(MSBuildProjectDirectory)\输出\PaperTodo-v$(Version)\</OutputPath>
     <SatelliteResourceLanguages>en;ja;ko</SatelliteResourceLanguages>
-    <DefaultItemExcludes>$(DefaultItemExcludes);对比_StickyMD\**;输出\**;PaperTodo_v*\**;.codex_decompile_debug\**;PaperTodo.Plugin.Abstractions\**;plugin-samples\**;plugins\**\.runtime\**;plugins\data\**;tests\**;vendor\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);对比_StickyMD\**;输出\**;PaperTodo_v*\**;.codex_decompile_debug\**;PaperTodo.Plugin.Abstractions\**;plugin-samples\**;plugins\**\.runtime\**;plugins\data\**;tests\**;tools\**;vendor\**</DefaultItemExcludes>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(PaperTodoDefaultEnglish)' == 'true'">
@@ -44,6 +44,10 @@
          Keep both modes separate so switching publish options never reuses a woven assembly/cache. -->
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\sdk-compression-$(_PaperTodoSdkCompressionEnabled)\</IntermediateOutputPath>
   </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <!-- Real-process diagnostics are tooling, never a dependency on a test assembly. -->
+    <Compile Include="tools\PaperTodo.EdgeDiagnostics\*.cs" Link="Diagnostics\%(Filename)%(Extension)" />
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="assets\PaperTodo.ico" />
     <!-- Repository plugin outputs are available to normal development builds, but plugins are
