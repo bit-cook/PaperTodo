@@ -278,11 +278,8 @@ public sealed partial class AppController
                 RebaseEdgeCapsuleQueueProxyAnimationClock(
                     entries,
                     timestamp),
-            interactionRequested: (point, message) =>
-                CompleteAndRouteEdgeCapsuleQueueProxyInput(
-                    plan.QueueKey,
-                    point,
-                    message),
+            interactionRequested: input =>
+                CompleteAndRouteEdgeCapsuleQueueProxyInput(plan.QueueKey, input),
             environmentChanged: () =>
                 CompleteEdgeCapsuleQueueCompositionProxy(
                     plan.QueueKey,
@@ -512,6 +509,7 @@ public sealed partial class AppController
                         .Remove(window);
                 }
             }
+            current.CompleteDeferredPointerInput();
             try
             {
                 current.Dispose();
@@ -656,6 +654,7 @@ public sealed partial class AppController
             }
         }
         TraceEdgeCapsuleQueueVisibility(current, "released");
+        current.CompleteDeferredPointerInput();
         try
         {
             current.Dispose();
@@ -690,34 +689,27 @@ public sealed partial class AppController
     }
 
     private void CompleteAndRouteEdgeCapsuleQueueProxyInput(
-        string queueKey,
-        DeviceScreenPoint point,
-        int message)
+        string queueKey, EdgeCapsulePointerDown input)
     {
-        if (!_edgeCapsuleQueueCompositionProxies.TryGetValue(
-                queueKey,
-                out var proxy))
+        if (!_edgeCapsuleQueueCompositionProxies.TryGetValue(queueKey, out var proxy)) return;
+        if (proxy.TryResolveInputTarget(input.ScreenPoint, out var handle, out var endpoint))
         {
-            return;
+            var target = proxy.Members.FirstOrDefault(member => member.SourceHandle == handle)?.Window;
+            if (target != null)
+            {
+                var paperId = target.EdgeCapsulePreviewPaperId;
+                var valid = target.CaptureEdgeCapsulePointerInputValidity();
+                proxy.DeferPointerDown(
+                    () => !IsExiting && _windows.TryGetValue(paperId, out var current) &&
+                        ReferenceEquals(current, target) && valid(),
+                    () =>
+                    {
+                        if (!WindowNative.TryPostMouseButtonDown(handle, input, endpoint))
+                            Trace.TraceWarning("Edge input could not be posted after handoff: {0}", paperId);
+                    });
+            }
         }
-
-        var hasTarget = proxy.TryResolveInputTarget(
-            point,
-            out var targetHandle,
-            out var endpointPoint);
         proxy.CompleteNow(success: true);
-        var handoffCompleted =
-            !_edgeCapsuleQueueCompositionProxies.TryGetValue(
-                queueKey,
-                out var remaining) ||
-            !ReferenceEquals(remaining, proxy);
-        if (hasTarget && handoffCompleted)
-        {
-            _ = WindowNative.TryPostMouseButtonDown(
-                targetHandle,
-                message,
-                endpointPoint);
-        }
     }
 
 

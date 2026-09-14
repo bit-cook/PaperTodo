@@ -26,7 +26,7 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
     private readonly HashSet<IntPtr> _cloakedRealSourceHandles = new();
     private readonly DispatcherTimer _sampleTimer;
     private readonly DispatcherTimer _completionTimer;
-    private readonly Action<DeviceScreenPoint, int> _interactionRequested;
+    private readonly Action<EdgeCapsulePointerDown> _interactionRequested;
     private readonly Action _environmentChanged;
     private readonly Func<EdgeCapsuleQueueCompositionProxy, bool> _coverReady;
     private readonly Action<EdgeCapsuleQueueCompositionProxy> _coverRollback;
@@ -67,7 +67,7 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
         DeviceScreenRect outputBounds,
         Func<long, bool> endpointCommitRequested,
         Func<long, bool> animationStartRequested,
-        Action<DeviceScreenPoint, int> interactionRequested,
+        Action<EdgeCapsulePointerDown> interactionRequested,
         Action environmentChanged,
         Func<EdgeCapsuleQueueCompositionProxy, bool> coverReady,
         Action<EdgeCapsuleQueueCompositionProxy> coverRollback,
@@ -172,7 +172,7 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
         EdgeCapsuleQueueCompositionProxy? predecessor,
         Func<long, bool> endpointCommitRequested,
         Func<long, bool> animationStartRequested,
-        Action<DeviceScreenPoint, int> interactionRequested,
+        Action<EdgeCapsulePointerDown> interactionRequested,
         Action environmentChanged,
         Func<EdgeCapsuleQueueCompositionProxy, bool> coverReady,
         Action<EdgeCapsuleQueueCompositionProxy> coverRollback,

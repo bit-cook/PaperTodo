@@ -141,6 +141,7 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
     public bool TryReserveForSuccessor()
     {
         if (_disposed ||
+            _inputHandoff is { Count: > 0 } ||
             _starting ||
             _finishing ||
             _coverLost ||
@@ -274,13 +275,11 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
         return false;
     }
 
-    private void HandleInteractionRequested(
-        DeviceScreenPoint point,
-        int message)
+    private void HandleInteractionRequested(EdgeCapsulePointerDown input)
     {
         if (CanRoutePointerInput)
         {
-            _interactionRequested(point, message);
+            _interactionRequested(input);
         }
     }
 
@@ -387,6 +386,7 @@ internal sealed partial class EdgeCapsuleQueueCompositionProxy
 
     public void ScheduleCompletionRetry(bool success)
     {
+        _inputHandoff?.Prune();
         if (_disposed)
         {
             return;

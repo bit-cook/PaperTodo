@@ -141,6 +141,16 @@ public sealed partial class PaperWindow
             layout.Monitor.WorkArea.Bottom);
     }
 
+    internal Func<bool> CaptureEdgeCapsulePointerInputValidity()
+    {
+        var source = EdgeCapsuleQueueProxySourceHandle;
+        var body = _bodySessionGeneration;
+        var preview = _edgeCapsulePreviewRequest;
+        return () => CanRouteEdgeCapsuleQueueProxyInput && !IsClosed &&
+            source != IntPtr.Zero && EdgeCapsuleQueueProxySourceHandle == source &&
+            _bodySessionGeneration == body && ReferenceEquals(_edgeCapsulePreviewRequest, preview);
+    }
+
     internal IntPtr EdgeCapsuleQueueProxySourceHandle =>
         _edgeCapsuleHost?.Handle ?? IntPtr.Zero;
 
