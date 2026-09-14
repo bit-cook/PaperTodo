@@ -1,0 +1,101 @@
+name: One-shot Markdown mode cleanup
+
+on:
+  push:
+    branches:
+      - work/settings-markdown-preview-direction-20260915
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: work/settings-markdown-preview-direction-20260915
+          fetch-depth: 0
+
+      - name: Collapse Markdown modes and docs
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          repo = Path('.')
+          cs_files = list((repo / 'src').rglob('*.cs')) + list((repo / 'tests').rglob('*.cs'))
+          for path in cs_files:
+              text = path.read_text(encoding='utf-8')
+              original = text
+              text = text.replace('MarkdownRenderModes.Enhanced', 'MarkdownRenderModes.Basic')
+              text = re.sub(
+                  r'MarkdownRenderModes\.Basic,\s*MarkdownRenderModes\.Basic',
+                  'MarkdownRenderModes.Basic',
+                  text)
+              if path.as_posix() == 'src/Models.cs':
+                  text = text.replace(
+                      '    // Old builds persisted "enhanced" as a separate mode. It now migrates to Basic.\n'
+                      '    // Keep this alias equal to Basic so existing enhanced-only presentation checks immediately\n'
+                      '    // become the new Basic behavior without preserving a fourth runtime state.\n'
+                      '    public const string Enhanced = Basic;\n'
+                      '    private const string LegacyEnhanced = "enhanced";\n',
+                      '    // Old builds persisted "enhanced" as a separate mode. Keep only the wire token for migration.\n'
+                      '    private const string LegacyEnhanced = "enhanced";\n')
+              if path.as_posix() == 'tests/PaperTodo.PersistenceChecks/Program.cs':
+                  text = text.replace(
+                      '    Assert(MarkdownRenderModes.Basic == MarkdownRenderModes.Basic,\n'
+                      '        "old Enhanced behavior should be the new Basic behavior");\n',
+                      '')
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+
+          for path in (repo / 'Resources').glob('Strings*.resx'):
+              text = path.read_text(encoding='utf-8')
+              original = text
+              text = re.sub(
+                  r'\n  <data name="MarkdownRenderEnhanced" xml:space="preserve">\s*<value>.*?</value>\s*</data>',
+                  '',
+                  text,
+                  flags=re.S)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+
+          changelog = repo / 'CHANGELOG.md'
+          text = changelog.read_text(encoding='utf-8')
+          text = text.replace(
+              '基础保留标记并提供轻量高亮，完全渲染隐藏语法标记并显示列表圆点、分割线，编号和任务状态保持清晰；',
+              '基础采用原增强效果：保留标记、淡化语法并显示列表圆点和分割线，编号与任务状态保持清晰；完全渲染进一步隐藏语法标记；')
+          text = text.replace(
+              'Markdown 显示简化为「关闭 / 基础 / 完全渲染」；旧基础保持不变，旧增强与完全统一为完全，旧配置自动迁移，新安装及恢复默认选择完全。',
+              'Markdown 显示简化为「关闭 / 基础 / 完全渲染」；旧基础与旧增强统一为新的基础，其中基础采用旧增强效果；完全渲染保持不变，旧配置自动迁移，新安装及恢复默认选择基础。')
+          text = text.replace('待办连续多选與批量操作', '待办连续多选与批量操作')
+          changelog.write_text(text, encoding='utf-8')
+
+          guide = repo / 'doc/USER_GUIDE.md'
+          text = guide.read_text(encoding='utf-8')
+          text = text.replace(
+              '四档渲染强度（关闭纯文本 / 基础适度 / 增强渲染 / 完全渲染）；完全渲染模式下',
+              '三档渲染强度（关闭纯文本 / 基础增强显示 / 完全渲染）；基础采用原增强档效果，保留 Markdown 标记并淡化语法、显示列表圆点与分割线；完全渲染模式下')
+          guide.write_text(text, encoding='utf-8')
+
+          remaining = []
+          for path in cs_files:
+              if 'MarkdownRenderModes.Enhanced' in path.read_text(encoding='utf-8'):
+                  remaining.append(str(path))
+          if remaining:
+              raise SystemExit('Enhanced runtime references remain: ' + ', '.join(remaining))
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests Resources CHANGELOG.md doc/USER_GUIDE.md
+          if git diff --cached --quiet; then
+            echo "No cleanup changes"
+            exit 0
+          fi
+          git commit -m "refactor: 彻底收敛 Markdown 三档 [markdown-mode-cleanup] [ci]"
+          git push origin HEAD:work/settings-markdown-preview-direction-20260915
