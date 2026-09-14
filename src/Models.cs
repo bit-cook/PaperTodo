@@ -415,13 +415,8 @@ public sealed class AppState
     public string UiLanguage { get; set; } = UiLanguages.Default;
     public string Theme { get; set; } = "system";
     public string ColorScheme { get; set; } = ColorSchemes.Warm;
-    private string _markdownRenderMode = MarkdownRenderModes.Basic;
     [System.Diagnostics.CodeAnalysis.AllowNull]
-    public string MarkdownRenderMode
-    {
-        get => _markdownRenderMode;
-        set => _markdownRenderMode = MarkdownRenderModes.Normalize(value);
-    }
+    public string MarkdownRenderMode { get; set; } = MarkdownRenderModes.Basic;
     public string ImageReferenceTextMode { get; set; } = ImageReferenceTextModes.Always;
     /// <summary>Full 编辑态控制符显灵时是否播放短淡入动画。</summary>
     public bool MarkdownEditAnimationEnabled { get; set; } = true;

@@ -97,8 +97,8 @@ internal static partial class Program
 
             box.SetMarkdownRenderMode(MarkdownRenderModes.Basic);
             Pump();
-            Require(!box.TryToggleRenderedTaskCheckBoxAtPoint(point), "Enhanced mode has no rendered task interaction");
-            Equal(source, box.Text, "Enhanced mode leaves source untouched");
+            Require(!box.TryToggleRenderedTaskCheckBoxAtPoint(point), "Basic mode has no rendered task interaction");
+            Equal(source, box.Text, "Basic mode leaves source untouched");
 
             box.SetMarkdownRenderMode(MarkdownRenderModes.Full);
             box.SetPreviewMode(false);
@@ -141,7 +141,7 @@ internal static partial class Program
                 Near(initialWidth, FirstLineWidth(box), "leaving restores initial width");
                 box.SetMarkdownRenderMode(MarkdownRenderModes.Basic);
                 Pump();
-                Require(FirstLineWidth(box) > initialWidth, "Enhanced shows source syntax");
+                Require(FirstLineWidth(box) > initialWidth, "Basic shows source syntax");
                 box.SetMarkdownRenderMode(MarkdownRenderModes.Full);
                 Pump();
                 Near(initialWidth, FirstLineWidth(box), "returning to Full restores width");
