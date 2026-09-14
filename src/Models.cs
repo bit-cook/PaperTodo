@@ -410,6 +410,7 @@ public sealed class AppState
     public string Theme { get; set; } = "system";
     public string ColorScheme { get; set; } = ColorSchemes.Warm;
     private string _markdownRenderMode = MarkdownRenderModes.Full;
+    [System.Diagnostics.CodeAnalysis.AllowNull]
     public string MarkdownRenderMode
     {
         get => _markdownRenderMode;
