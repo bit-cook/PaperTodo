@@ -29,17 +29,26 @@ public static class MarkdownRenderModes
 {
     public const string Off = "off";
     public const string Basic = "basic";
-    // Legacy input value. AppState migrates it to Full instead of retaining a hidden setting.
-    public const string Enhanced = "enhanced";
     public const string Full = "full";
+
+    // Old builds persisted "enhanced" as a separate mode. It now migrates to Basic.
+    // Keep this alias equal to Basic so existing enhanced-only presentation checks immediately
+    // become the new Basic behavior without preserving a fourth runtime state.
+    public const string Enhanced = Basic;
+    private const string LegacyEnhanced = "enhanced";
 
     public static bool IsValid(string? mode)
     {
-        return mode is Off or Basic or Enhanced or Full;
+        return mode is Off or Basic or Full;
     }
 
-    public static string Normalize(string? mode) =>
-        mode is Off or Basic ? mode : Full;
+    public static string Normalize(string? mode) => mode switch
+    {
+        Off => Off,
+        Basic or LegacyEnhanced => Basic,
+        Full => Full,
+        _ => Basic
+    };
 }
 
 public static class ImageReferenceTextModes
@@ -409,7 +418,7 @@ public sealed class AppState
     public string UiLanguage { get; set; } = UiLanguages.Default;
     public string Theme { get; set; } = "system";
     public string ColorScheme { get; set; } = ColorSchemes.Warm;
-    private string _markdownRenderMode = MarkdownRenderModes.Full;
+    private string _markdownRenderMode = MarkdownRenderModes.Basic;
     [System.Diagnostics.CodeAnalysis.AllowNull]
     public string MarkdownRenderMode
     {

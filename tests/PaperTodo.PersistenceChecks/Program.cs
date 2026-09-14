@@ -231,17 +231,19 @@ static void ReplaceRetriesTransientSharingFailures()
 
 static void MarkdownModesMigrateAndRoundTrip()
 {
-    Assert(new AppState().MarkdownRenderMode == MarkdownRenderModes.Full,
-        "new state should default to Full");
+    Assert(new AppState().MarkdownRenderMode == MarkdownRenderModes.Basic,
+        "new state should default to Basic");
+    Assert(MarkdownRenderModes.Enhanced == MarkdownRenderModes.Basic,
+        "old Enhanced behavior should be the new Basic behavior");
     var cases = new (string? Input, string Expected)[]
     {
         ("\"off\"", MarkdownRenderModes.Off),
         ("\"basic\"", MarkdownRenderModes.Basic),
-        ("\"enhanced\"", MarkdownRenderModes.Full),
+        ("\"enhanced\"", MarkdownRenderModes.Basic),
         ("\"full\"", MarkdownRenderModes.Full),
-        ("\"unknown\"", MarkdownRenderModes.Full),
-        ("null", MarkdownRenderModes.Full),
-        (null, MarkdownRenderModes.Full)
+        ("\"unknown\"", MarkdownRenderModes.Basic),
+        ("null", MarkdownRenderModes.Basic),
+        (null, MarkdownRenderModes.Basic)
     };
 
     foreach (var (input, expected) in cases)
