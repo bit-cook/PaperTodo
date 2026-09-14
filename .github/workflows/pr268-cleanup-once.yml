@@ -1,0 +1,75 @@
+name: One-shot PR268 cleanup
+
+on:
+  push:
+    branches:
+      - work/settings-markdown-preview-direction-20260915
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: work/settings-markdown-preview-direction-20260915
+          fetch-depth: 0
+      - name: Apply cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'src/Models.cs',
+              '''    private string _markdownRenderMode = MarkdownRenderModes.Basic;\n    [System.Diagnostics.CodeAnalysis.AllowNull]\n    public string MarkdownRenderMode\n    {\n        get => _markdownRenderMode;\n        set => _markdownRenderMode = MarkdownRenderModes.Normalize(value);\n    }''',
+              '''    [System.Diagnostics.CodeAnalysis.AllowNull]\n    public string MarkdownRenderMode { get; set; } = MarkdownRenderModes.Basic;''')
+
+          replace_once(
+              'src/StateStore.cs',
+              '''        if (!MarkdownRenderModes.IsValid(state.MarkdownRenderMode))\n        {\n            state.MarkdownRenderMode = MarkdownRenderModes.Basic;\n        }''',
+              '''        state.MarkdownRenderMode = MarkdownRenderModes.Normalize(state.MarkdownRenderMode);''')
+
+          replace_once(
+              'src/MarkdownSemanticPresentation.cs',
+              '/// <summary>引用 &gt; 标记取色：Enhanced 预览沿用「完全透明保留宽度」，与一般语法淡化不同。</summary>',
+              '/// <summary>引用 &gt; 标记取色：Basic 预览沿用「完全透明保留宽度」，与一般语法淡化不同。</summary>')
+
+          path = Path('tests/PaperTodo.MarkdownEditingChecks/Program.cs')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'Enhanced mode has no rendered task interaction': 'Basic mode has no rendered task interaction',
+              'Enhanced mode leaves source untouched': 'Basic mode leaves source untouched',
+              'Enhanced shows source syntax': 'Basic shows source syntax',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match for {old!r}, got {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+          if grep -nE 'Enhanced 预览|Enhanced mode|Enhanced shows source syntax' \
+            src/MarkdownSemanticPresentation.cs tests/PaperTodo.MarkdownEditingChecks/Program.cs; then
+            echo 'Found stale Enhanced semantic wording' >&2
+            exit 1
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/Models.cs src/StateStore.cs src/MarkdownSemanticPresentation.cs tests/PaperTodo.MarkdownEditingChecks/Program.cs
+          git commit -m 'refactor: 收敛 Markdown 模式归一化 [ci]'
+          git push origin HEAD:work/settings-markdown-preview-direction-20260915
