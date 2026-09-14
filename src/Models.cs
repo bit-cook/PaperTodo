@@ -29,6 +29,7 @@ public static class MarkdownRenderModes
 {
     public const string Off = "off";
     public const string Basic = "basic";
+    // Legacy input value. AppState migrates it to Full instead of retaining a hidden setting.
     public const string Enhanced = "enhanced";
     public const string Full = "full";
 
@@ -36,6 +37,9 @@ public static class MarkdownRenderModes
     {
         return mode is Off or Basic or Enhanced or Full;
     }
+
+    public static string Normalize(string? mode) =>
+        mode is Off or Basic ? mode : Full;
 }
 
 public static class ImageReferenceTextModes
@@ -405,7 +409,13 @@ public sealed class AppState
     public string UiLanguage { get; set; } = UiLanguages.Default;
     public string Theme { get; set; } = "system";
     public string ColorScheme { get; set; } = ColorSchemes.Warm;
-    public string MarkdownRenderMode { get; set; } = MarkdownRenderModes.Enhanced;
+    private string _markdownRenderMode = MarkdownRenderModes.Full;
+    public string MarkdownRenderMode
+    {
+        get => _markdownRenderMode;
+        // Normalize at the data boundary so loading, restoring and assigning legacy values agree.
+        set => _markdownRenderMode = MarkdownRenderModes.Normalize(value);
+    }
     public string ImageReferenceTextMode { get; set; } = ImageReferenceTextModes.Always;
     /// <summary>Full 编辑态控制符显灵时是否播放短淡入动画。</summary>
     public bool MarkdownEditAnimationEnabled { get; set; } = true;
@@ -469,6 +479,7 @@ public sealed class AppState
     public bool ExperimentalHideInactiveTitleBar { get; set; }
     public bool ExperimentalDockedCapsulesNonTopmost { get; set; }
     public bool ExperimentalEdgeCapsuleHoverPreview { get; set; } = true;
+    public bool EdgeCapsulePreviewPreferDownward { get; set; } = true;
     public bool ExperimentalEdgeCapsuleHoverIntent { get; set; } = true;
     public string ExperimentalEdgeCapsuleHoverIntentSensitivity { get; set; } =
         EdgeCapsuleHoverIntentSensitivities.Medium;
