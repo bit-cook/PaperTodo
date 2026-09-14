@@ -18,10 +18,10 @@ public sealed partial class AppController
         content.Children.Add(WrapWithHint(
             SettingsFieldLabel(Strings.Get("TrayMarkdownRenderMode")),
             BuildSettingsHintTooltip(SettingsSidebarLocalized(
-                "关闭：显示原文。\n基础：保留 Markdown 标记，仅提供轻量高亮。\n完全：编辑时按标题、列表、引用和代码块等排版，隐藏多数标记；光标所在块显示标记以便编辑，失焦后整篇只读渲染。",
-                "Off: show source text.\nBasic: keep Markdown markers with lightweight highlighting.\nFull: render headings, lists, quotes and code blocks while editing, hiding most markers. The block at the caret reveals its markers for editing; the whole note becomes read-only rendered content when unfocused.",
-                "オフ：原文を表示します。\n基本：Markdown 記号を残し、軽いハイライトを適用します。\n完全：編集中も見出し・リスト・引用・コードブロックを整形し、多くの記号を隠します。カーソルのあるブロックでは編集用に記号を表示し、フォーカスが外れると全体を読み取り専用で表示します。",
-                "끄기: 원문을 표시합니다.\n기본: Markdown 기호를 유지하고 가벼운 강조만 적용합니다.\n전체: 편집 중에도 제목, 목록, 인용, 코드 블록을 서식화하고 대부분의 기호를 숨깁니다. 커서가 있는 블록은 편집을 위해 기호를 표시하며, 포커스를 잃으면 전체 노트를 읽기 전용으로 렌더링합니다."))));
+                "关闭：显示原文。\n基础：保留 Markdown 标记，同时淡化语法标记并显示列表圆点、分割线等轻量排版。\n完全：编辑时按标题、列表、引用和代码块等最终排版，隐藏多数标记；光标所在块显示标记以便编辑，失焦后整篇只读渲染。",
+                "Off: show source text.\nBasic: keep Markdown markers while fading syntax and showing lightweight layout such as list bullets and dividers.\nFull: render headings, lists, quotes and code blocks while editing, hiding most markers. The block at the caret reveals its markers for editing; the whole note becomes read-only rendered content when unfocused.",
+                "オフ：原文を表示します。\n基本：Markdown 記号を残しつつ、構文記号を薄く表示し、リストの丸印や区切り線などの軽い整形を適用します。\n完全：編集中も見出し・リスト・引用・コードブロックを最終表示に近い形で整形し、多くの記号を隠します。カーソルのあるブロックでは編集用に記号を表示し、フォーカスが外れると全体を読み取り専用で表示します。",
+                "끄기: 원문을 표시합니다.\n기본: Markdown 기호를 유지하면서 문법 기호를 흐리게 하고 목록 점과 구분선 같은 가벼운 서식을 표시합니다.\n전체: 편집 중에도 제목, 목록, 인용, 코드 블록을 최종 표시와 가깝게 서식화하고 대부분의 기호를 숨깁니다. 커서가 있는 블록은 편집을 위해 기호를 표시하며, 포커스를 잃으면 전체 노트를 읽기 전용으로 렌더링합니다."))));
 
         UIElement? markdownAnimationRow = null;
         content.Children.Add(CreateSettingsSidebarMarkdownRenderSelector(isFullRender =>
@@ -125,7 +125,7 @@ public sealed partial class AppController
 
     private void RestoreSettingsSidebarNoteDefaults()
     {
-        State.MarkdownRenderMode = MarkdownRenderModes.Full;
+        State.MarkdownRenderMode = MarkdownRenderModes.Basic;
         State.MarkdownEditAnimationEnabled = true;
         State.ExternalMarkdownExtension = ExternalMarkdownFileExtensions.Default;
         State.AutoCompressLargeImages = true;
