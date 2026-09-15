@@ -48,6 +48,12 @@ public static class PaperTitles
         return TakeTextElements(cleaned, Math.Clamp(maxLength, 1, MaxTitleLength));
     }
 
+    internal static bool ExceedsTextElementLimit(string? title, int maxLength)
+    {
+        var limit = Math.Clamp(maxLength, 1, MaxTitleLength);
+        return StringInfo.ParseCombiningCharacters(title ?? "").Length > limit;
+    }
+
     public static string EffectiveTitle(PaperData paper, int fallbackNumber)
     {
         var title = CleanCustomTitle(paper.Title);
