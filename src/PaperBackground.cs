@@ -36,7 +36,7 @@ internal static class PaperBackground
         public string Layout { get; set; } = PaperBackgroundLayouts.Center;
     }
 
-    private const int MaxDecodePixelWidth = 4096;
+    private const int MaxDecodePixelDimension = 4096;
     private const double BlendedImageOpacity = 0.30;
     private static readonly string[] CandidateNames =
         ["papertodo.png", "papertodo.jpg", "papertodo.jpeg"];
@@ -179,6 +179,7 @@ internal static class PaperBackground
 
     private static BitmapSource LoadBitmap(string path)
     {
+        var (pixelWidth, pixelHeight) = ReadPixelSize(path);
         using var stream = new FileStream(
             path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
@@ -186,11 +187,39 @@ internal static class PaperBackground
         bitmap.BeginInit();
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
         bitmap.CreateOptions = BitmapCreateOptions.None;
-        bitmap.DecodePixelWidth = MaxDecodePixelWidth;
+        if (pixelWidth > MaxDecodePixelDimension ||
+            pixelHeight > MaxDecodePixelDimension)
+        {
+            if (pixelWidth >= pixelHeight)
+            {
+                bitmap.DecodePixelWidth = MaxDecodePixelDimension;
+            }
+            else
+            {
+                bitmap.DecodePixelHeight = MaxDecodePixelDimension;
+            }
+        }
         bitmap.StreamSource = stream;
         bitmap.EndInit();
         bitmap.Freeze();
         return bitmap;
+    }
+
+    private static (int Width, int Height) ReadPixelSize(string path)
+    {
+        using var stream = new FileStream(
+            path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        var decoder = BitmapDecoder.Create(
+            stream,
+            BitmapCreateOptions.DelayCreation,
+            BitmapCacheOption.None);
+        if (decoder.Frames.Count == 0)
+        {
+            throw new InvalidDataException("The background image contains no decodable frame.");
+        }
+        var frame = decoder.Frames[0];
+        return (frame.PixelWidth, frame.PixelHeight);
     }
 
     private static void ApplyLayout(ImageBrush brush, string layout)
