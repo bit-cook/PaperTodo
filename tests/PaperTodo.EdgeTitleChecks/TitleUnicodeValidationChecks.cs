@@ -13,5 +13,7 @@ internal static partial class Program
             "External title validation stays aligned with title cleanup");
         Check(PaperTitles.ExceedsTextElementLimit(title + "新", 6),
             "A seventh Unicode title element exceeds the configured limit");
+        Check(!PaperTitles.ExceedsTextElementLimit("123456 ", 6),
+            "Trailing whitespace removed by title cleanup does not cause a false overflow");
     }
 }
