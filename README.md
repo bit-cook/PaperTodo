@@ -15,8 +15,7 @@
 <p align="center">
   <strong>Language: English | <a href="README.zh.md">简体中文</a></strong><br>
   <a href="https://snownico0722.github.io/PaperTodo/">Official Website</a><br>
-  <a href="doc/USER_GUIDE.en.md">User Manual</a> · <a href="CHANGELOG.md">Changelog</a><br>
-  <a href="https://qm.qq.com/q/Mp7spYLrig">QQ Group: 551612664 — Strange Magic Research Base</a>
+  <a href="doc/USER_GUIDE.en.md">User Manual</a> · <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 ---
@@ -146,7 +145,6 @@ dotnet build -c Release
 ## Feedback & Community
 
 - Bugs & suggestions: [GitHub Issues](https://github.com/snownico0722/PaperTodo/issues)
-- QQ Group: [551612664 (Strange Magic Research Base)](https://qm.qq.com/q/Mp7spYLrig)
 
 Thanks to the [linux.do](https://linux.do/) community for the support.
 
