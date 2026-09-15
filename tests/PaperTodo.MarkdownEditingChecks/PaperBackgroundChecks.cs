@@ -47,6 +47,10 @@ internal static partial class Program
                 layout: PaperBackgroundLayouts.Center);
             Require(original != null, "valid image produces an ImageBrush");
             Require(original.ImageSource != null, "valid image brush keeps its image source");
+            Require(original.ImageSource is BitmapSource originalBitmap &&
+                    originalBitmap.PixelWidth == 16 &&
+                    originalBitmap.PixelHeight == 16,
+                "small backgrounds keep their native decode size instead of being upscaled");
             Require(original.IsFrozen, "paper background brush is frozen for UI reuse");
             Require(Math.Abs(original.Opacity - 1.0) < 0.001,
                 "disabled blending keeps the original image opaque");
@@ -82,6 +86,27 @@ internal static partial class Program
             Require(todoHost.Background is ImageBrush,
                 "paper background applies to the todo ScrollViewer host");
 
+            File.Delete(backgroundPath);
+            WriteJpegFixture(candidatePaths[1], width: 1, height: 5000);
+            var tall = PaperBackground.CreateBrush(
+                blendWithTheme: false,
+                layout: PaperBackgroundLayouts.Center);
+            Require(tall?.ImageSource is BitmapSource tallBitmap &&
+                    tallBitmap.PixelWidth <= 4096 &&
+                    tallBitmap.PixelHeight == 4096,
+                "tall backgrounds cap their longest decoded edge at 4096 pixels");
+
+            File.Delete(candidatePaths[1]);
+            WriteJpegFixture(candidatePaths[2], width: 5000, height: 1);
+            var wide = PaperBackground.CreateBrush(
+                blendWithTheme: false,
+                layout: PaperBackgroundLayouts.Center);
+            Require(wide?.ImageSource is BitmapSource wideBitmap &&
+                    wideBitmap.PixelWidth == 4096 &&
+                    wideBitmap.PixelHeight <= 4096,
+                "wide backgrounds cap their longest decoded edge at 4096 pixels");
+
+            File.Delete(candidatePaths[2]);
             File.WriteAllText(backgroundPath, "not an image");
             var badImage = PaperBackground.CreateBrush(
                 blendWithTheme: false,
@@ -101,7 +126,28 @@ internal static partial class Program
         }
         finally
         {
-            File.Delete(backgroundPath);
+            foreach (var candidate in candidatePaths)
+            {
+                File.Delete(candidate);
+            }
         }
+    }
+
+    private static void WriteJpegFixture(string path, int width, int height)
+    {
+        var stride = checked(width * 3);
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgr24,
+            null,
+            new byte[checked(stride * height)],
+            stride);
+        var encoder = new JpegBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 }
