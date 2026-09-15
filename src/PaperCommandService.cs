@@ -837,7 +837,7 @@ internal sealed partial class PaperCommandService
         {
             throw Error(
                 "paper_limit",
-                "PaperTodo supports at most 100 papers.");
+                "PaperTodo supports at most 200 papers.");
         }
     }
 
@@ -870,7 +870,10 @@ internal sealed partial class PaperCommandService
         {
             throw Error("invalid_params", $"{name} cannot be empty.");
         }
-        if (text.Length > maxLength)
+        var tooLong = string.Equals(name, "title", StringComparison.Ordinal)
+            ? PaperTitles.ExceedsTextElementLimit(text, maxLength)
+            : text.Length > maxLength;
+        if (tooLong)
         {
             throw Error(
                 "invalid_params",
