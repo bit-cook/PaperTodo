@@ -833,7 +833,7 @@ internal sealed partial class PaperCommandService
 
     private void EnsurePaperCapacity()
     {
-        if (_controller.State.Papers.Count >= 100)
+        if (_controller.State.Papers.Count >= 200)
         {
             throw Error(
                 "paper_limit",
