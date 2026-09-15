@@ -26,64 +26,83 @@ This log is written for general and power users alike. It focuses on user-facing
 
 #### Edge Preview & Capsules
 
-- **Live edge previews**: Hover over a capsule to browse and interact without opening the paper. Todo previews support checking / undoing completion and opening the paper from the card background; separate association and quick-launch targets reserve their actual width to reduce wrapping.
-- Note previews follow the Markdown mode: Off shows source; Basic uses the former Enhanced styling with faded markers, bullets and rules while keeping numbers and task states readable; Full hides markers. Headings, emphasis, strikethrough, code blocks, lists and image placeholders follow the note's fonts, sizes, bold settings, text rendering and zoom, without extra ordinary-line or blank-line spacing.
-- Previews show the top excerpt without scrolling, with an ellipsis at the bottom on overflow. Notes use at most 16 blocks / 6000 characters for both sizing and display, leaving no space for omitted content. Shared inline parsing handles nested emphasis, escapes and complex links; long-paragraph links require a complete press and release.
-- Visible text is prepared in batches; long paragraphs, long code rows and dense styles use a dedicated background thread to reduce UI work, while plain text avoids unnecessary allocations. The first prepared body appears together; the same live preview can reuse its completed body after a brief retraction if content and dimensions are unchanged. Content, typography, zoom or display changes trigger rebuilding.
-- Startup restoration and content changes prepare reusable previews without retaining hidden cards. With Edge Browse enabled, all eligible edge Markdown notes are preloaded for sets of up to 10; larger sets prioritize long or heavily styled content. Startup skips the editing debounce; continuous edits stay coalesced. Preload and display dimensions match, and leaving the queue releases the cache.
-- Adjustable mouse-intent prediction reduces accidental switches. Cards and neighboring capsules expand / retract together with less startup drift; animation follows system rendering for more continuous updates, and queues update independently. Downward browsing keeps the card near the cursor when it fits, avoiding upward jumps to fill space; General settings can disable “Prefer downward expansion while browsing” to restore upper-space-first placement.
-- Leaving the browse corridor retracts previews; hiding / restoring queues clears old hover state. Dragging capsules to reorder or leave the queue hides previews; empty todo and note papers use compact cards. Handoff clicks retain their press position and modifiers only for immediate success; retries discard the old click.
-- Clicking a capsule again retracts a clearly visible paper or brings a substantially covered paper forward. Titles support hidden (0) or unlimited length with cycling controls; with previews disabled, truncated titles expand on hover and retract on leave without changing the stored title.
-- Todo and note edge-capsule icons and titles align, with no empty slot for a hidden close button. Master capsules show exact counts when expanded or collapsed: a fixed two-digit width for 1–99, expanding as needed for 100+, without arrow / count width jitter.
+- **Live edge previews**: Hover over an edge capsule to browse and interact with content without opening the full paper.
+  - **Todo live preview**: Shows a simplified todo list with direct check / uncheck actions. Click the card background to open the full paper; linked-paper and quick-launch actions use stable dedicated click targets.
+  - **Note live preview**: Supports up to 6000 characters and follows the note's Markdown rendering.
+  - **Smoother handoff and intent prediction**: Adjustable pointer-intent prediction reduces accidental switching while browsing between capsules. When moving downward, the next card stays near the current pointer position whenever it still fits instead of jumping upward just to fill free space; leaving the browse area retracts it automatically.
+- **Repeat-click behavior**: Clicking an edge capsule again retracts its paper when the paper is still clearly visible; if the paper is substantially covered by another window, it is brought to the front instead of being collapsed out of sight.
+- **More flexible edge-capsule titles**: Title length can be reduced further, including fully hiding the title.
+- Todo and note capsule icons and titles now align consistently.
+- Hiding the close button no longer leaves an empty slot.
+- Master capsules use a more compact count-only presentation.
 
 #### Plugin System & Desktop Micro-Apps
 
-- **Desktop micro-apps**: Turn note papers into timers, clocks, review pools or system monitors. Settings adds a Plugins center; isolated data lives in `plugins/data/`.
-- **Codex CLI Bridge**: Send todo items or whole papers to local Codex CLI from todo actions or the paper's top bar, including images, linked paths and related-paper context. A dedicated paper edits the default prompt: untouched uses the built-in text, while edits and intentional clearing persist. Includes a plugin-creation Skill and guide, invoked by default for plugin-building requests.
-- Web plugins use WebView2 + HTML/CSS/JS without compilation; Native plugins use .NET 10 + WPF for high-performance custom rendering. Body, Edge Mini hover and persistent Provider Runtime are separate components.
-- Plugins can customize capsules (icons, text, progress bars / rings or custom drawing) and Mini previews; add right-side todo action icons, todo / paper text menu entries, top-bar buttons / status and global hotkeys; and exclusively handle `Esc` and body context menus. They can read permitted note images and open popups at the clicked button or menu action that close on focus loss.
-- The host manages isolated settings and versioned, migratable JSON state with 10 MB / 20 MB limits. `advancedSettings` generates categorized settings; `startupPaper` restores dedicated papers at startup.
-- Manifests localize names, descriptions, settings, options and categories with UI-language fallback; Native plugins can read the current language. Language changes offer “Later” or “Restart now”.
-- Source examples and ready-to-use plugins live in `plugin-samples/` and `plugins/`: native / Web clocks, Pomodoro and review pools adapted to narrow windows, capsules and Mini views. Plugins have no security sandbox; install plugins only from trusted sources.
+- **Desktop micro-app container**: Note papers can become independent desktop micro-apps such as Pomodoro timers, clocks, review pools or system monitors. Settings adds a dedicated Plugins center; plugin data is isolated under `plugins/data/` with 10 MB / 20 MB limits.
+  - **Web / Native dual runtime architecture**:
+    - **Web plugins**: Built with WebView2 and standard HTML/CSS/JS, with no compilation required.
+    - **Native plugins**: Built with .NET 10 + WPF for fully custom, high-performance desktop UI.
+  - **Deep host integration**:
+    - **Custom capsules and Mini views**: Plugins can customize collapsed capsules with icons, text, dynamic progress bars / rings or fully custom WPF drawing, and provide lightweight Mini views for edge hover.
+    - **Todo integration**: Plugins can add right-side todo action icons and context-menu actions.
+    - **Top bar and keys**: Plugins can add top-bar actions and status labels, register dedicated global hotkeys, and exclusively handle `Esc` and body context menus.
+    - **Paper menus and lightweight popups**: Plugins can add text actions to paper context menus, read permitted note images, and open small focus-loss-closing popups from clicked buttons or menu items.
+    - **Internationalization**: Plugin manifests can provide localized text that follows the current UI language.
+  - Security: there is no artificial security sandbox; install third-party plugins only from trusted sources.
+  - Examples:
+    - Example plugins include the Codex CLI Bridge, which can send todo or paper context to a local Codex CLI, plus native clocks, Pomodoro timers, review pools and Web clocks adapted to narrow windows, capsules and Mini views.
+    - Full example source lives in `plugin-samples/`.
+    - Ready-to-use plugins live in `plugins/`.
 
 #### Todos & Markdown
 
-- **Full-text search**: `Ctrl+F` searches all built-in todos, including completed items, and Markdown notes, showing current-paper / global counts. `Enter` / `Shift+Enter` or arrows cycle to matching items and text, revealing hidden papers, expanding capsules and continuing across papers; matches stay highlighted while the search box keeps focus.
-- Search accepts input immediately, opens outward from the paper and can extend beyond its bounds, and moves via its rounded right-side drag bar, count or blank area. It has no shadow and uses vector up/down arrow and close controls.
-- **WYSIWYG Markdown editing**: Full Render shows headings, lists, quotes, code fences, images and inline styles while typing, hiding most markers. The caret's block reveals source markers; blur restores read-only rendering for the whole note. Heading, emphasis and link markers collapse for compact layout; task boxes, bullets and quotes keep stable slots, and ordered numbers retain source text to reduce jumps during editing, toggling and continuation.
-- Modes become Off / Basic / Full Render. Legacy Basic and Enhanced migrate to Basic with the former Enhanced appearance; Full stays Full, and new / restored defaults use Basic. Rendered task boxes toggle the original Markdown `[ ]` / `[x]` with undo / redo. “Markdown rendering animation” adds an optional short fade and appears in settings only for Full Render.
-- **Todo multi-selection and batch actions**: Drag along the left side to select multiple todos, then batch check / uncheck, copy, delete via the context menu or drag the group to the trash. Arrow keys continue editing across items without racing through them on key repeat. The paper limit rises from 100 to 200, retaining the in-app cleanup notice at the limit.
-- `Ctrl+Shift+C` copies selected todos as Markdown tasks with completion states, or selected note text as plain text. The context-menu actions are “Copy as Markdown” / “Copy as plain text”; normal `Ctrl+C` is unchanged.
-- Markdown supports bold-italic (`***text***` / `___text___`), combinations of bold / italic / strikethrough / links, and backslash escapes. Headings, quotes, lists, fences, links, basic HTML, escapes and image-code boundaries share parsing semantics to reduce nested display, click and editing inconsistencies.
+- **Full-text search**: `Ctrl+F` searches all todos and notes, showing current-paper and global match counts. Use `Enter` / `Shift+Enter` or the navigation controls to move through matches across papers, with matching capsules opened automatically; the search bar can be dragged to reposition it.
+- **WYSIWYG Markdown editing**: Full Render provides block-level Markdown rendering while editing, keeping the note visually rendered instead of switching to a separate plain-source view.
+- **Markdown parsing and display consistency**: Headings, quotes, lists, code blocks, links, basic HTML, escapes and image-code boundaries now share the same Markdown semantics, reducing inconsistencies in complex nested content.
+- **Todo multi-selection and batch actions**: Drag along the left side to select multiple todos, then batch check / uncheck, copy, delete from the context menu, or drag the group to the trash. Arrow-key editing can continue across items without racing through multiple todos on key repeat.
+- **Todo reminders**: Set custom durations, preset intervals, this evening, tomorrow morning and other reminder times; due reminders locate and highlight the todo with a tray notification and sound.
+- The paper limit increases from 100 to 200.
+- `Ctrl+Shift+C` copies selected todos as Markdown tasks with completion states, or copies selected note text as plain text.
+- Markdown supports bold-italic (`***text***` / `___text___`), combinations of bold / italic / strikethrough / links, and backslash escapes.
 
 #### Important Fixes & Performance Improvements
 
-- **Saving and input protection**: Improve saving reliability in extreme conditions, reduce backup frequency and check availability before updating. Todo paste exceeding count / text limits and notes reaching the editor protection limit now show explicit notices.
+- **Saving and input protection**: Improve saving reliability in extreme conditions, reduce backup frequency and check availability before updating.
 - **Fullscreen avoidance**: Fix papers remaining above some administrator-elevated fullscreen apps in the foreground when fullscreen avoidance is enabled.
-- Fix papers opening on the old monitor after moving a capsule, and remembered expanded positions being pulled back to the capsule's monitor; newly saved positions support mixed scaling. Papers opened from capsules obtain focus more reliably, reducing input or `Ctrl+W` going to the previous app.
-- **Faster startup and exit**: Only papers on unavailable displays wait. Edge notes prepare previews before folded shells are built in short, low-priority batches; menus and optional setup do not block initial restoration, and plugin startup awaits completion without polling. Exit saves, withdraws surfaces, stops scripts concurrently and completes normal window shutdown with fewer waits.
-- Long-note edits update only affected Markdown ranges; multi-line fence changes track the actual range to avoid full reparsing or missed updates. Improve capsule animation, monitor switching and window tracking with high refresh rates and mixed-DPI displays.
-- The Windows single-file package without .NET shrinks from about 33 MiB to 17 MiB, with no meaningful startup or working-set regression observed in testing.
+- **Faster startup and exit**: Parallel and queued startup / shutdown work reduces waiting and improves responsiveness.
 
 #### Appearance, Settings & Interaction
 
-- **Custom paper backgrounds**: Place `papertodo.png`, `papertodo.jpg` or `papertodo.jpeg` beside `PaperTodo.exe` for todos and built-in notes. Appearance settings show the original image or blend it with paper colors, using Stretch / Center / Bottom Left / Bottom Center / Bottom Right; non-stretch modes preserve aspect ratio without cropping. Failed loads fall back safely with a Settings warning; decoding caps the longest edge at 4096 pixels while smaller images retain their original size.
-- Settings gains sidebar pages for General, Todo, Note, Appearance, Shortcuts, Plugins and Labs. Window / capsule options move to General; General / Todo / Note restore their own defaults, each page remembers scrolling, Advanced mode stays at the bottom, and “Help improve” moves to General with simpler wording.
-- Settings refits to the active work area for small screens, high scaling and cross-DPI moves. Switches and hotkey recording refresh locally to reduce flicker.
-- New global hotkeys lock all papers, toggle opacity for all papers or all capsules, or adjust the active paper's transparency. `Ctrl+W` closes / collapses the active expanded paper; middle-clicking its title bar matches the top-right button.
-- Auto-collapse to capsules on focus loss respects editing, dragging, menus and passive interactions. Advanced mode preserves associated papers' prior hidden state across shortcut hide / restore, preventing unwanted popups.
+- **Custom paper backgrounds**: Place `papertodo.png`, `papertodo.jpg` or `papertodo.jpeg` beside `PaperTodo.exe` to use a custom paper background.
+  - Appearance settings can show the original image or blend it with paper colors, using Stretch / Center / Bottom Left / Bottom Center / Bottom Right.
+  - Decoding caps the longest edge at 4096 pixels.
+- **Settings redesign**: Settings now uses left-side navigation and improved layout, adapting to the active work area on small screens, high scaling and cross-DPI moves. Switches and hotkey recording refresh locally to reduce flicker.
+- **Quick close for the active paper**: Expanded papers support `Ctrl+W`, and middle-clicking the title bar performs the same close / collapse action.
 
 #### Experimental Labs Features
 
-- **Local MCP**: Start with `--mcp` for a standard server that lets authorized AI assistants read, create, append and manage notes / todos; Settings can copy the configuration and AI Skill prompt in one click.
-- Window tethering: drag the top-bar tether button onto a third-party window to attach a paper and smoothly follow moving, minimizing and restoring. Floating capsules can snap near screen / external-window edges, sliding out on hover and retracting on leave.
-- Todo countdown reminders support preset intervals, this evening, tomorrow morning and custom timing, then locate and highlight the item with a tray notification and sound.
-- Papers can fade on focus loss, and normal / docked capsules while resting, with separate opacity settings and control over master capsules and active states.
-- On blur, hide only top-bar buttons or fade the title bar while retaining rounded outlines and shadows. Fully hidden areas pass clicks through without moving the body or resizing the window. Docked / master capsules can disable forced topmost; hotkeys can send papers / capsules behind normal windows and enable click-through.
+- **Local MCP**: Start with `--mcp` to expose a standard MCP service that lets authorized AI assistants read, create, append and manage PaperTodo notes / todos; Settings can copy the configuration and AI Skill prompt in one click.
+- **External window tethering**: Drag the paper's top-bar tether control onto a third-party window to attach the paper and smoothly follow that window as it moves, minimizes and restores.
+- **Magnetic edge capsules**: Floating capsules can snap near screen or external-window edges, slide out on hover and retract when the pointer leaves.
+- **New global hotkeys**:
+  - Lock all papers.
+  - Toggle opacity for all papers or the active paper.
+  - Toggle opacity for all capsules.
+  - Send papers / capsules behind other windows.
+- **Focus-loss automation**: Papers can fade, hide top-bar icons / the title bar, or collapse into capsules when focus is lost.
+- **Resting translucency**: Normal and docked capsules can become translucent while idle, with separate opacity controls.
+- Docked and master capsules can disable forced topmost behavior.
 
 #### Other Fixes & Improvements
 
-- Fix “Restore defaults for this page” on Shortcuts failing to reset numpad-key distinction, and Settings dropdowns not fully following the theme.
+- Todo paste exceeding count / text limits and notes reaching the input-protection limit now show explicit notices instead of silently dropping or refusing input.
+- Papers opened from capsules obtain foreground focus more reliably, avoiding keyboard input or `Ctrl+W` still going to the previous app.
+- Fix “Restore defaults for this page” on Shortcuts failing to restore the “Distinguish numpad digits” option.
+- Fix Settings dropdowns not fully following the current theme.
+- Fix papers with “Remember expanded position” being pulled back to the capsule's monitor after collapsing when the paper and capsule are on different displays; newly remembered positions support mixed scaling.
+- Fix edge capsules moved to a secondary monitor sometimes opening their paper back on the old monitor.
+- Long-note edits update only affected Markdown ranges; multi-line fence changes track the actual range to avoid full reparsing or missed updates. Improve capsule animation, monitor switching and window tracking with high refresh rates and mixed-DPI displays.
+- The Windows single-file package without .NET shrinks from about 33 MiB to 17 MiB.
 
 ---
 
@@ -108,7 +127,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 - **File and folder quick launch**: Drop a local file or folder onto a todo to link its path. Open it, reveal its location, or unlink it from the todo; invalid paths are clearly marked. A todo can link to either a path or a paper.
 - **Link any paper**: Todos can now link to another todo paper as well as a note paper. Existing note links remain compatible.
-- **Move completed items to bottom**: When enabled, checking an item moves it to the end of the completed section; unchecking it moves it to the end of the active section. This behavior is suspended while automatic clearing is enabled.
+- **Move completed items to bottom**: When enabled, checking an item moves it to the end of the completed section; unchecking it moves to the end of the active section. This behavior is suspended while automatic clearing is enabled.
 
 **Notes and Markdown**
 
