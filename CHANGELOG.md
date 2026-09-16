@@ -29,7 +29,7 @@ This log is written for general and power users alike. It focuses on user-facing
 - **Live edge previews**: Hover over an edge capsule to browse and interact with content without opening the full paper.
   - **Todo live preview**: Shows a simplified todo list with direct check / uncheck actions. Click the card background to open the full paper; linked-paper and quick-launch actions use stable dedicated click targets.
   - **Note live preview**: Supports up to 6000 characters and follows the note's Markdown rendering.
-  - **Smoother handoff and intent prediction**: Adjustable pointer-intent prediction reduces accidental switching while browsing between capsules. “Prefer downward expansion while browsing” can be enabled in Settings (off by default); when enabled, downward switches keep the next card near the current pointer whenever it still fits. Leaving the browse area retracts it automatically.
+  - **Smoother handoff and intent prediction**: Adjustable pointer-intent prediction reduces accidental switching while browsing between capsules. “Prefer downward expansion while browsing” can be enabled; when enabled, downward switches expand downward whenever the target card still fits instead of filling the space above.
 - **Repeat-click behavior**: Clicking an edge capsule again retracts its paper when the paper is still clearly visible; if the paper is substantially covered by another window, it is brought to the front instead of being collapsed out of sight.
 - **More flexible edge-capsule titles**: Title length can be reduced further, including fully hiding the title.
 - Todo and note capsule icons and titles now align consistently.
