@@ -20,7 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
-- None currently.
+- Fixed edge capsules not remembering their expanded paper position and size when “Keep edge capsule visible while expanded” is turned off.
 
 ### v4.0.0-beta1
 
