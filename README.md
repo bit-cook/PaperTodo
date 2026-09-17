@@ -28,7 +28,11 @@
 
 | Markdown View |
 | :---: |
-| <img src="assets/Md.jpg" alt="Markdown view" width="100%"> |
+| <img src="assets/Md4.0.jpg" alt="Markdown view" width="100%"> |
+
+| Edge Browsing |
+| :---: |
+| <img src="assets/edge4.0.gif" alt="Edge browsing" width="100%"> |
 
 | Capsule Mode | Advanced Capsules |
 | :---: | :---: |
