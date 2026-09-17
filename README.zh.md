@@ -28,7 +28,11 @@
 
 | Markdown 浏览 |
 | :---: |
-| <img src="assets/Md.jpg" alt="Markdown 浏览" width="100%"> |
+| <img src="assets/Md4.0.jpg" alt="Markdown 浏览" width="100%"> |
+
+| 边缘浏览 |
+| :---: |
+| <img src="assets/edge4.0.gif" alt="边缘浏览" width="100%"> |
 
 | 胶囊模式 | 高级胶囊 |
 | :---: | :---: |
