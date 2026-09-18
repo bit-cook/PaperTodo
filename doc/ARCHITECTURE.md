@@ -419,6 +419,8 @@ Debug 包可显式启用内存诊断：`EdgeDiagnosticObservation` 观察既有�
 - 两种手势最终都向现有 `_closeButton` 发送同一个 routed `Click`，因此“关闭按钮此刻意味着折叠、隐藏还是其他既有策略”仍只有一个 owner，不在快捷手势中复制。
 - 从 `NOACTIVATE` 胶囊显式打开纸片时，激活路径以 OS foreground HWND 为最终 truth；必要时补 `Activate` / foreground 请求后再 `Focus`，避免 WPF `IsActive` / focus 状态残留在旧窗口。
 
+纸片实际隐藏与销毁前共用 `PaperWindow` 的前台交接入口，以当前 OS foreground 和实时 Z-order 选择仍可操作的下一窗口；批量隐藏已标记不可见的纸片不参与接替。业务关闭语义、数据删除与辅助 owner 生命周期不由此入口改变。后台撤下、退出和用户已切走时不主动激活；不保留旧前台窗口、不排队重试抢焦点。
+
 ### 7.2 匿名使用统计
 
 `TelemetryService` 是可关闭的独立统计子系统：只聚合每日使用计数和粗粒度运行环境，不上传纸片/待办/Markdown 正文、图片、路径、剪贴板或机器/硬件标识；crash 只保留计数与粗粒度签名。关闭后停止采集并清除未发送统计。
