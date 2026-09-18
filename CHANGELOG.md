@@ -20,6 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
+- **External-open fallback**: Opening a note externally still uses the app associated with the currently configured export extension; if Windows has no association for that extension, PaperTodo automatically falls back to Notepad.
 - **Window focus**: Closing, hiding or deleting the active paper now keeps the next usable window in front instead of raising a covered background window. Removing a background paper leaves the current foreground alone.
 - **Paper background scaling**: “Stretch” now fills the paper without changing the image aspect ratio; with Stretch off, smaller images keep their native size and oversized images are only scaled down proportionally until they fully fit inside the paper.
 - **Codex CLI Bridge**: The default model is now GPT-6 Astra (`gpt-6-astra`); reasoning remains `xhigh`, and leaving the model setting empty still preserves the Codex CLI model setting. Settings now use the dedicated **More settings** page: startup, background execution, and model stay on the plugin card, while reasoning and path options remain available in the full settings page.
