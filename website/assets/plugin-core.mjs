@@ -5,8 +5,10 @@ export const recipes = {
   converter: {en: 'Make a unit converter for length, temperature and weight, with a reverse direction button.', zh: '做一个单位换算插件，支持长度、温度、重量，并能切换换算方向。'}
 };
 
-export function resolveLanguage(query, stored) {
-  return ['en', 'zh'].includes(query) ? query : ['en', 'zh'].includes(stored) ? stored : 'en';
+export function resolveLanguage(query, stored, browserLanguage = 'en') {
+  if (['en', 'zh'].includes(query)) return query;
+  if (['en', 'zh'].includes(stored)) return stored;
+  return /^zh(?:-|$)/i.test(browserLanguage) ? 'zh' : 'en';
 }
 
 export function planFromPrompt(value) {

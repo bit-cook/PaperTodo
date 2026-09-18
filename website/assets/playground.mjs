@@ -744,7 +744,7 @@ window.addEventListener('pagehide', event => {if (!event.persisted) {stopMarkdow
 new ResizeObserver(() => {finishDrag(false);surfaces.settle();positionPapers();if(state.preview)positionPreview();}).observe(canvas);
 let stored = null;
 try {stored=localStorage.getItem('papertodo-lang');} catch {}
-state.language = resolveLanguage(document.documentElement.dataset.language || new URLSearchParams(location.search).get('lang'), stored);
+state.language = resolveLanguage(document.documentElement.dataset.language || new URLSearchParams(location.search).get('lang'), stored, navigator.language);
 const first = location.hash.slice(1); if (CHAPTERS.includes(first)) state.chapter = first;
 syncPageViewport();
 changeLanguage(state.language); syncChapterUI(); renderScene();
