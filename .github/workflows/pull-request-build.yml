@@ -68,3 +68,6 @@ jobs:
 
       - name: Startup, shutdown and small-workset checks
         run: dotnet run --project .\tests\PaperTodo.LifecycleChecks\PaperTodo.LifecycleChecks.csproj -c Release
+
+      - name: Window close activation checks
+        run: dotnet run --project .\tests\PaperTodo.WindowCloseActivationChecks\PaperTodo.WindowCloseActivationChecks.csproj -c Release
