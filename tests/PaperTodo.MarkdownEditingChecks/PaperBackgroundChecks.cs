@@ -56,7 +56,34 @@ internal static partial class Program
             Require(Math.Abs(original.Opacity - 1.0) < 0.001,
                 "disabled blending keeps the original image opaque");
             Require(original.Stretch == Stretch.None,
-                "center position keeps the image at its native size when stretch is disabled");
+                "small images keep their native size when stretch is disabled");
+
+            var oversized = PaperBackground.CreateBrush(
+                blendWithTheme: false,
+                layout: PaperBackgroundLayouts.Center,
+                stretch: false,
+                availableWidth: 8,
+                availableHeight: 8);
+            Require(oversized != null && oversized.Stretch == Stretch.Uniform,
+                "oversized images are uniformly scaled down to stay inside the paper");
+
+            var oneAxisOversized = PaperBackground.CreateBrush(
+                blendWithTheme: false,
+                layout: PaperBackgroundLayouts.Center,
+                stretch: false,
+                availableWidth: 8,
+                availableHeight: 32);
+            Require(oneAxisOversized != null && oneAxisOversized.Stretch == Stretch.Uniform,
+                "exceeding either paper dimension triggers proportional downscaling");
+
+            var roomForNativeSize = PaperBackground.CreateBrush(
+                blendWithTheme: false,
+                layout: PaperBackgroundLayouts.Center,
+                stretch: false,
+                availableWidth: 32,
+                availableHeight: 32);
+            Require(roomForNativeSize != null && roomForNativeSize.Stretch == Stretch.None,
+                "images smaller than the paper are never enlarged when stretch is disabled");
             Require(original.AlignmentX == AlignmentX.Center &&
                     original.AlignmentY == AlignmentY.Center,
                 "center position aligns the image to the center");
@@ -96,13 +123,19 @@ internal static partial class Program
                 blendWithTheme: false,
                 layout: PaperBackgroundLayouts.Center,
                 stretch: true);
-            Require(stretched != null && stretched.Stretch == Stretch.Fill,
-                "stretch toggle fills the whole paper body independently of position");
+            Require(stretched != null && stretched.Stretch == Stretch.UniformToFill,
+                "stretch toggle fills the paper while preserving the source aspect ratio");
 
             var host = new Grid();
             PaperBackground.Apply(host);
             Require(host.Background is ImageBrush,
                 "configured paper background applies to an outer content host");
+            Require(
+                PaperBackground.NeedsSizeRefresh(host.Background, 8, 8),
+                "non-stretched backgrounds refresh when the paper becomes smaller than the image");
+            Require(
+                !PaperBackground.NeedsSizeRefresh(host.Background, 32, 32),
+                "non-stretched backgrounds do not refresh while native-size rendering still fits");
 
             var todoHost = new ScrollViewer();
             PaperBackground.Apply(todoHost);
