@@ -50,8 +50,7 @@
       "name": "Reasoning",
       "description": "Value passed to model_reasoning_effort. Defaults to xhigh; leave empty to keep the Codex CLI setting.",
       "default": "xhigh",
-      "maxLength": 32,
-      "quick": true
+      "maxLength": 32
     },
     {
       "id": "codexPath",
@@ -70,6 +69,8 @@
       "maxLength": 1024
     }
   ],
+  "advancedSettings": true,
+  "primarySettings": 3,
   "startupPaper": {
     "enabledSetting": "autoStart",
     "instanceKey": "main",
