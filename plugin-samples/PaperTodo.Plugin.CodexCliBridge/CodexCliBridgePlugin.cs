@@ -674,7 +674,7 @@ public sealed class CodexCliBridgePlugin : IPaperBodyPlugin, IPaperPluginRuntime
                 return new CodexBridgeSettings(
                     Text(root, "codexPath", "codex", allowEmpty: false),
                     Text(root, "workingDirectory", string.Empty, allowEmpty: true),
-                    Text(root, "model", "gpt-5.6-sol", allowEmpty: true),
+                    Text(root, "model", "gpt-6-astra", allowEmpty: true),
                     Text(root, "reasoningEffort", "xhigh", allowEmpty: true),
                     Bool(root, "backgroundExecution", fallback: false));
             }
@@ -683,7 +683,7 @@ public sealed class CodexCliBridgePlugin : IPaperBodyPlugin, IPaperPluginRuntime
                 return new CodexBridgeSettings(
                     "codex",
                     string.Empty,
-                    "gpt-5.6-sol",
+                    "gpt-6-astra",
                     "xhigh",
                     BackgroundExecution: false);
             }

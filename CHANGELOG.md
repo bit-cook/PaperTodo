@@ -20,6 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
+- **Codex CLI Bridge**: The default model is now GPT-6 Astra (`gpt-6-astra`); reasoning remains `xhigh`, and leaving the model setting empty still preserves the Codex CLI model setting.
 - **Interactive website**: The official website now introduces PaperTodo 4.0 through a shared workbench for papers, edge previews, Markdown, scripts and plugin creation. Includes updated FAQs, paper themes, dark mode and a layout that scales uniformly above 1600 × 900. First visits follow the browser language (Chinese or English), while an explicit URL language or saved choice takes priority.
 
 ### v4.0.0-beta1
