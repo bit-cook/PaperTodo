@@ -20,7 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
-- None currently.
+- **Interactive website**: The official website now introduces PaperTodo 4.0 through a shared workbench for papers, edge previews, Markdown, scripts and plugin creation. Includes updated FAQs, paper themes, dark mode and a layout that scales uniformly above 1600 × 900.
 
 ### v4.0.0-beta1
 
