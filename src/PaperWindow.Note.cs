@@ -1009,7 +1009,7 @@ public sealed partial class PaperWindow
         try
         {
             var path = WriteExternalMarkdownFile();
-            OpenMarkdownExternalFile(path);
+            OpenExternalNoteFile(path);
         }
         catch (Exception ex)
         {
@@ -1021,7 +1021,7 @@ public sealed partial class PaperWindow
         }
     }
 
-    private static void OpenMarkdownExternalFile(string path)
+    private static void OpenExternalNoteFile(string path)
     {
         try
         {
