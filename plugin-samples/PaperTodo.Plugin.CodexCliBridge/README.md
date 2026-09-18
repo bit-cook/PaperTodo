@@ -44,7 +44,7 @@ Skill 安装在 `skills/papertodo-plugin-creator/SKILL.md`，包含 Web / Native
 
 - **启动后自动启用**：默认开启，创建/恢复折叠的 Codex CLI 插件纸片。
 - **后台执行**：默认关闭。关闭时待办行内按钮和纸片顶栏按钮都以前台 PowerShell 窗口运行；开启后两种入口都隐藏窗口静默执行。
-- **模型**：默认 `gpt-5.6-sol`，通过 `-m` 传给 Codex；留空则不覆盖 Codex 自己的模型配置。
+- **模型**：默认 `gpt-6-astra`，通过 `-m` 传给 Codex；留空则不覆盖 Codex 自己的模型配置。
 - **推理**：默认 `xhigh`（极高），通过 `-c model_reasoning_effort=xhigh` 传给 Codex；留空则不覆盖 Codex 自己的推理配置。
 
 “更多设置”：
