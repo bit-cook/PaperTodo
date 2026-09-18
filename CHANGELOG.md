@@ -20,7 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
-- **Foreground after deletion**: Fix deleting the active paper switching to the wrong window. Focus is handed to the next eligible window in the current stacking order before the paper's hidden owner is destroyed; deleting a background paper does not actively change focus.
+- **Window focus**: Closing, hiding or deleting the active paper now keeps the next usable window in front instead of raising a covered background window. Removing a background paper leaves the current foreground alone.
 - **Paper background scaling**: “Stretch” now fills the paper without changing the image aspect ratio; with Stretch off, smaller images keep their native size and oversized images are only scaled down proportionally until they fully fit inside the paper.
 - **Codex CLI Bridge**: The default model is now GPT-6 Astra (`gpt-6-astra`); reasoning remains `xhigh`, and leaving the model setting empty still preserves the Codex CLI model setting. Settings now use the dedicated **More settings** page: startup, background execution, and model stay on the plugin card, while reasoning and path options remain available in the full settings page.
 - **Interactive website**: The official website now introduces PaperTodo 4.0 through a shared workbench for papers, edge previews, Markdown, scripts and plugin creation. Includes updated FAQs, paper themes, dark mode and a layout that scales uniformly above 1600 × 900. First visits follow the browser language (Chinese or English), while an explicit URL language or saved choice takes priority.

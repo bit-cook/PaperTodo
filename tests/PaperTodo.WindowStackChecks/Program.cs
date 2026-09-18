@@ -35,7 +35,8 @@ internal static class Program
         var failed = 0;
         var total = 0;
         foreach (var visibility in new[] { "normal", "taskbar-hidden", "switcher-hidden" })
-        foreach (var operation in new[] { "delete", "close-hide", "background-delete", "animated-hide" })
+        foreach (var operation in new[] { "delete", "close-hide", "button-hide", "background-delete", "background-hide",
+            "animated-hide", "focus-change-during-fade", "hide-all", "peer-next", "animated-reopen" })
         {
             total++;
             try { RunIsolated(visibility, operation); }
@@ -133,7 +134,7 @@ internal static class Program
         var state = new AppState
         {
             TelemetryEnabled = false,
-            EnableAnimations = operation == "animated-hide",
+            EnableAnimations = operation is "animated-hide" or "focus-change-during-fade" or "animated-reopen",
             UseCapsuleMode = false, UseDeepCapsuleMode = false,
             UsePersistentPowerShellProcess = false, McpEnabled = false,
             HidePapersFromTaskbar = visibility != "normal",
@@ -170,32 +171,66 @@ internal static class Program
             var z1 = new IntPtr(long.Parse(fields[1]));
             var z3 = new IntPtr(long.Parse(fields[2]));
             var known = new[] { z0, z1, z2, z3 };
-            foreach (var handle in known.Reverse()) BringToTop(handle);
+            var initialStack = operation is "peer-next" or "hide-all"
+                ? new[] { z0, z2, z1, z3 } : known;
+            foreach (var handle in initialStack.Reverse()) BringToTop(handle);
             Require(SetForegroundWindow(z0), "Fixture was not granted foreground; test was not performed.");
             await Until(() => GetForegroundWindow() == z0, "activate Z0");
             await Settle();
-            Require(Stack(known).SequenceEqual(known), "Could not establish Z0/Z1/Z2/Z3: " + Describe(known));
+            Require(Stack(known).SequenceEqual(initialStack), "Could not establish Z0/Z1/Z2/Z3: " + Describe(known));
             Console.WriteLine($"BEFORE {visibility}/{operation} {Describe(known)} managedOwner={new WindowInteropHelper(closing).Owner} nativeOwner={GetWindow(z0, 4)}");
 
-            if (operation == "background-delete")
+            if (operation is "background-delete" or "background-hide")
             {
                 Require(SetForegroundWindow(z1), "Could not foreground external Z1 for background-deletion test.");
                 await Until(() => GetForegroundWindow() == z1, "activate external Z1");
                 await Settle();
             }
 
-            if (operation is "close-hide" or "animated-hide") closing.Close();
-            else controller.DeletePaper(paper);
+            if (operation == "hide-all") controller.HideAllPapers();
+            else if (operation == "button-hide")
+            {
+                var button = (System.Windows.Controls.Button)typeof(PaperWindow)
+                    .GetField("_closeButton", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(closing)!;
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            }
+            else if (operation is "delete" or "background-delete" or "peer-next") controller.DeletePaper(paper);
+            else closing.Close();
 
+            if (operation == "animated-reopen")
+            {
+                controller.ShowPaper(paper);
+                await Settle();
+                Require(closing.IsVisible && !closing.IsClosed && GetForegroundWindow() == z0,
+                    "Cancelled hide withdrew or deactivated the reopened paper: " + Describe(known));
+                Require(Stack(known).SequenceEqual(initialStack), "Cancelled hide reordered the stack.");
+                Console.WriteLine($"AFTER {visibility}/{operation} {Describe(known)}");
+                return;
+            }
+            var expectedForeground = operation == "peer-next" ? z2 : z1;
+            if (operation == "focus-change-during-fade")
+            {
+                // Simulate a newer user activation before the fade completion reaches Hide().
+                Require(SetForegroundWindow(z3), "Could not switch away during the fade.");
+                expectedForeground = z3;
+            }
             await Until(() => !closing.IsVisible || closing.IsClosed, "remove Z0 surface");
             // Cross-process SetForegroundWindow completion requires the other input queue to
             // dispatch messages. Pump both real queues instead of asserting on its return value.
-            await Until(() => GetForegroundWindow() == z1, "Z1 must take foreground, not Z2/Z3; " + Describe(known));
+            await Until(() => GetForegroundWindow() == expectedForeground,
+                "Wrong foreground after removal; " + Describe(known));
             await Settle();
-            var survivors = new[] { z1, z2, z3 };
-            Require(GetForegroundWindow() == z1, "Foreground changed again after close: " + Describe(known));
+            var survivors = operation switch
+            {
+                "hide-all" => new[] { z1, z3 },
+                "peer-next" => new[] { z2, z1, z3 },
+                "focus-change-during-fade" => new[] { z3, z1, z2 },
+                _ => new[] { z1, z2, z3 }
+            };
+            Require(GetForegroundWindow() == expectedForeground, "Foreground changed again after close: " + Describe(known));
             Require(Stack(survivors).SequenceEqual(survivors), "Close reordered background windows: " + Describe(known));
-            Require(peer.IsVisible && !peer.IsClosed, "Closing one paper destroyed its peer.");
+            Require(!peer.IsClosed && peer.IsVisible == (operation != "hide-all"),
+                "Wrong peer lifecycle after removal.");
             Console.WriteLine($"AFTER {visibility}/{operation} {Describe(known)}");
         }
         finally

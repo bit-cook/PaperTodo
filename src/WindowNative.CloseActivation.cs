@@ -4,12 +4,15 @@ namespace PaperTodo;
 
 internal static partial class WindowNative
 {
-    internal static bool TryHandoffForegroundBeforeClose(IntPtr closingWindow) =>
+    internal static bool TryHandoffForegroundBeforeClose(
+        IntPtr closingWindow,
+        Func<IntPtr, bool>? canActivate = null) =>
         WindowCloseActivationPolicy.TryHandoff(
             closingWindow,
             GetForegroundWindow,
             static window => GetWindow(window, GwHwndNext),
-            window => IsCloseActivationTarget(window, closingWindow),
+            window => IsCloseActivationTarget(window, closingWindow) &&
+                (canActivate?.Invoke(window) ?? true),
             SetForegroundWindow);
 
     internal static bool IsCloseActivationTarget(IntPtr window, IntPtr closingWindow)
