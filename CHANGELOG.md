@@ -20,6 +20,7 @@ This log is written for general and power users alike. It focuses on user-facing
 
 ### Unreleased
 
+- Fixed edge capsules not remembering their expanded paper position and size when “Keep edge capsule visible while expanded” is turned off.
 - **External-open fallback**: Opening a note externally still uses the app associated with the currently configured export extension; if Windows has no association for that extension, PaperTodo automatically falls back to Notepad.
 - **Window focus**: Closing, hiding or deleting the active paper now keeps the next usable window in front instead of raising a covered background window. Removing a background paper leaves the current foreground alone.
 - **Paper background scaling**: “Stretch” now fills the paper without changing the image aspect ratio; with Stretch off, smaller images keep their native size and oversized images are only scaled down proportionally until they fully fit inside the paper.
