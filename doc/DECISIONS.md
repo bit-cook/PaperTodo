@@ -341,7 +341,7 @@ V3 Lite production translation backend 明确不包含：
 
 Queue compositor、真实 docked HWND 和 floating drag HWND 是显式 visual authority。publication / successor / handoff / rollback 任一边界都必须保证至少一个可见 authority 存在。
 
-DComp root replacement 与 DWM cloak/uncloak 通过可验证 transaction boundary 协调。cover 丢失时先立即尝试恢复真实 HWND；只有即时恢复本身失败时才进入有界 completion retry。
+DComp root replacement 与 DWM cloak/uncloak 通过可验证 transaction boundary 协调。cover 丢失时先立即尝试恢复真实 HWND；只有即时恢复本身失败时才进入有界 completion retry。普通 handoff completion 同样最多只安排两次延迟重试；预算耗尽后保留当前 cover authority，不把它升级成另一套自动恢复循环。
 
 一次 visual transaction 的原子单位对应**用户看到的一次 authority swap**，而不是一个 HWND。涉及同一队列的 endpoint settle / reveal / cloak / root detach 时，优先先完成所有成员需要的 apply/layout，再跨一个共享的 render / desktop-composition boundary，最后统一验证和交接；不要让每个成员各自完成一套完整 flush/handoff。
 
@@ -355,6 +355,7 @@ V2.5 的日志还证明了 transaction 粒度本身会成为性能和正确性�
 
 - 不允许“先全部 cloak，稍后再发布 cover”。
 - 不允许 cover 丢失后什么都不做、先空等 timer 才首次恢复 real source。
+- 不在 completion retry 预算耗尽后再切入另一套持续定时恢复。
 - 不把资源 Dispose 当作 authority transfer。
 - 不为同一 visual transaction 按 HWND 重复执行 `apply → render/flush → verify → next member` 的完整交接；成员级准备可以独立，但 authority swap 应在共享边界统一完成和验证。
 
@@ -654,7 +655,7 @@ PR #94 为完成 V3 Lite 曾引入 source export、finalizer、clean-state verif
 
 ## D-020 — 插件状态与核心 `data.json` 分域持久化
 
-**Status:** Accepted
+**Status:** Partially superseded by D-040（恢复分流部分由 D-040 替代；数据分域与附属清理边界保留）
 
 ### Context
 
@@ -689,7 +690,7 @@ Paper body plugin 引入后，provider settings、provider-scoped Runtime state�
 
 ## D-021 — 插件与 MCP 共用 `PaperCommandService` 作为外部业务命令边界
 
-**Status:** Accepted
+**Status:** Partially superseded by D-040（读取前提交部分由 D-040 替代；共享 mutation 边界保留）
 
 ### Context
 
@@ -699,7 +700,7 @@ MCP 和 paper-body plugin 是两种不同的外部入口，但都需要读取和
 
 所有供插件 Host API 与 GUI 侧 MCP 共用的 Paper/Todo/Note 读取和业务 mutation 统一进入 `PaperCommandService`。该 service 拥有跨 transport 一致的业务边界，包括：
 
-- 在外部操作前提交仍停留在 UI/provider session 的待提交内容；
+- 外部写入若目标是正在编辑的内置 Markdown，只先提交该目标的待提交文字；不为其他目标或第三方正文做全局 Commit；
 - 统一参数、类型和业务约束；
 - 对一次 mutation 做同步持久化提交；
 - 保存失败时恢复内存 snapshot / 新建对象等可回滚状态；
@@ -1001,7 +1002,7 @@ D-026 把内置 Note 的 Markdown 语义统一到 Markdig 后，第一版为了�
 ### Decision
 
 - `MarkdownSemanticDocument` 与其 AvalonEdit `TextDocument` 由同一线程拥有；初次打开总是同步全文 parse，每次完整 `TextChanged` 也在返回 WPF 之前同步发布新的 current snapshot。
-- 正文少于 2000 字符时直接全文 parse；较大 Note 先使用 D-028 的轻量局部路径，只有该路径明确拒绝的 reference 等全局依赖才同步回退全文。
+- 正文少于 8000 字符时直接全文 parse；较大 Note 先使用 D-028 的轻量局部路径，只有该路径明确拒绝的 reference 等全局依赖才同步回退全文。
 - 不再为每个 Note 建 permanent parser worker，也不维护 semaphore、pending generation、stale/current 双语义或并发 publish 路径。
 - derived line query 使用简单的连续 buffer + per-line range compact index；`lineStarts` 只在本次 parse / rebuild 中临时使用，不作为 snapshot 常驻状态，也不恢复 segmented/rebase/lazy-cache 层。
 - 每个 live semantic session 保留一份与当前 snapshot 对应的 source string，供下一次差异定位和局部 splice 使用。AST 仍只在 parse 期间存在，不长期持有。
@@ -1052,7 +1053,7 @@ PaperTodo 的产品需求更接近：打开 Note 时建立全文正确基线；�
 
 ### Decision
 
-- 打开 Note 时仍全文 Markdig parse；小于 2000 字符的正文每次编辑也全文 parse。
+- 打开 Note 时仍全文 Markdig parse；小于 8000 字符的正文每次编辑也全文 parse。
 - 较大 Note 普通编辑使用单次约 1K 的行对齐目标窗口。窗口与上一份 snapshot 中已存在的 span/link 相交时，扩到这些已有 semantic container 的完整范围，再局部 Markdig parse + splice。
 - 删除 1K→16K retry、guard proof、窗口外 semantic 等价比较和“必须证明整篇 exact 才允许局部发布”的合同。大 Note 普通编辑明确是 **best-effort local**。
 - reference definition / reference use 仍保留便宜的显式 tripwire；局部窗口无法安全解析这些全局依赖时直接返回 full-parse fallback，不在局部路径内再造 reference resolver。
@@ -1461,3 +1462,33 @@ Protocol 2.1 发布后，宿主继续加入了新的插件可见契约。如果�
 - `tests/PaperTodo.ProtocolPolicyChecks/Program.cs`：2.1/2.2 接受范围及 2.2-only 能力拒绝测试。
 - `plugin-samples/PaperTodo.Plugin.Protocol21Web/`：2.1 向后兼容样例。
 - `plugin-samples/PaperTodo.Plugin.TopBarWeb/` 与 Codex CLI Bridge：2.2 样例。
+
+
+---
+
+## D-040 — 插件基础读写不承担业务恢复，查询与普通通知不扩大副作用
+
+**Status:** Accepted
+
+### Context
+
+协议 1.2 的恢复分流在读取错误后生成空文档、改写另一条文件路径，并把恢复标记传播到插件页与后来的 MCP 启用条件。共享外部操作准备又让只读查询提交所有正文；复盘插件的提交会写入整个记录池。为小操作追加这些职责，会扩大正常调用和失败的影响范围。
+
+### Decision
+
+- 保留插件数据与核心数据分域及一次保存的临时文件替换；删除宿主 `.json.recovered` 路径、恢复标记和基于它的权限阻断。不存在的文件可默认初始化；已有文件读不出来就报告读取失败，不以空数据继续。旧恢复文件保留在磁盘但不自动选择、迁移或删除。
+- 插件自己的长期业务数据、备份与恢复由插件负责。复盘示例移除自己的 `.bak` 回退和复制，使用原来的临时文件替换；只有明确不存在的记录文件才初始化为空，已有文件损坏、不可读或版本不受支持时直接失败，不用空记录覆盖原文件。
+- Paper/Todo/Note/图片查询不触发正文提交或强制同步，接受模型相对实时编辑的短暂延迟；外部 mutation 只有写同一内置 Markdown 时才先提交该目标的用户文字。为提交一次外部 mutation 做的同步落盘只序列化当前模型，不顺带结算其他 Markdown 编辑器；其他 Markdown 已有的 dirty 状态和正常保存计时继续保留。普通应用保存仍按正常规则同步全部内置 Markdown，不把第三方 Body `Commit()` 当作全局保存钩子；回滚和事件来源处理保持不变。
+- 普通正文通知异常不升级成正文销毁；新建待办的初始属性属于创建/追加权限；轻弹窗外链复用正文已有系统打开，不新增权限或桥接接口。
+- 首次后台启动失败不重试；Web 后台在首次成功前遇到 renderer 故障同样按启动失败处理，不先做内部 reload。实际成功运行后的故障保留原有有界恢复，不创建新的错误分类或恢复状态。
+
+### Why
+
+宿主负责稳定接口与当前操作，不替每个插件定义业务数据恢复策略。删除扩大职责的分支，比在恢复文件、读取同步和失败补偿上继续加状态更可控。参数有效性、已有内容修改权限和一次保存的完整性不是本次删除对象。
+
+### Evidence
+
+- `src/PaperBodyPluginDataStore.cs`、`src/AppController.Mcp.cs`：单路径读写与当前有效设置。
+- `src/PaperCommandService.cs`、`src/PaperCommandService.NoteAssets.cs`：纯读取；mutation 仍保留原准备。
+- `src/PaperWindow.PluginBodies.cs`、`src/AppController.PluginRuntime.cs`：普通通知与首次启动失败。
+- `tests/PaperTodo.PersistenceChecks/Program.cs`、`tests/PaperTodo.SettingsApiChecks/PluginBoundaryChecks.cs`：真实文件、调用次数、初始属性和后台生命周期回归。

@@ -147,7 +147,6 @@ public sealed partial class AppController : IDisposable
         RefreshApplicationThemeResources();
         _imageStore.AutoCompressLargeImages = State.AutoCompressLargeImages;
         _imageStore.Load();
-        var strippedInternalImageMarkers = StripInternalImageRenderMarkersFromState();
         var protectedImageIdsForReuse = TryCollectUnprotectedImages();
         // Only rebuild free numbers when the same protection scan that gates GC succeeded.
         // A failed scan leaves reuse disabled so missing-but-referenced ids are never reissued.
@@ -182,11 +181,6 @@ public sealed partial class AppController : IDisposable
             _forceSaveTimer.Stop();
             SaveNow();
         };
-
-        if (strippedInternalImageMarkers)
-        {
-            MarkDirty();
-        }
 
         _topmostRefreshTimer = new DispatcherTimer
         {
@@ -223,27 +217,6 @@ public sealed partial class AppController : IDisposable
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.TimeChanged += OnSystemTimeChanged;
-    }
-
-    private bool StripInternalImageRenderMarkersFromState()
-    {
-        var changed = false;
-        foreach (var paper in State.Papers)
-        {
-            if (paper.Type != PaperTypes.Note || string.IsNullOrEmpty(paper.Content))
-            {
-                continue;
-            }
-
-            var cleaned = MarkdownImageReferences.StripRenderMarkers(paper.Content);
-            if (!string.Equals(cleaned, paper.Content, StringComparison.Ordinal))
-            {
-                paper.Content = cleaned;
-                changed = true;
-            }
-        }
-
-        return changed;
     }
 
     public async Task StartAsync(
@@ -2862,7 +2835,7 @@ public sealed partial class AppController : IDisposable
             _saveTimer.Stop();
             _forceSaveTimer.Stop();
             _hasPendingDirty = false;
-            CommitPendingNoteContentsForSave();
+            CommitPendingMarkdownContentsForSave();
             var version = Interlocked.Increment(ref _saveVersion);
             NotifyPluginEventMutationStampChanged();
             attemptedVersion = version;
@@ -2912,18 +2885,18 @@ public sealed partial class AppController : IDisposable
         }
     }
 
-    internal void CommitPendingNoteContentsForSave()
+    internal void CommitPendingMarkdownContentsForSave()
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher != null && !dispatcher.CheckAccess())
         {
-            // Note commit touches WPF controls; only run on the UI thread.
+            // Markdown editor commit touches WPF controls; only run on the UI thread.
             return;
         }
 
         foreach (var window in _windows.Values)
         {
-            window.CommitPendingNoteContentForSave();
+            window.CommitPendingMarkdownContentForSave();
         }
     }
 
@@ -3435,9 +3408,8 @@ public sealed partial class AppController : IDisposable
         return SystemParameters.WorkArea;
     }
 
-    // Per-queue vertical rest position, keyed by (monitor, edge). Falls back to the legacy global
-    // margin when a queue has no stored value, so old configs are unchanged and a queue's first
-    // slide forks it from the global default.
+    // Per-queue vertical rest position, keyed by (monitor, edge). Missing entries use the current
+    // product default directly; the per-queue dictionary is the only persisted authority.
     public double DeepCapsuleStartTopMarginFor(PaperData paper)
     {
         var edge = paper.CapsuleSide == DeepCapsuleSides.Left ? EdgeCapsuleEdge.Left : EdgeCapsuleEdge.Right;
@@ -3452,10 +3424,7 @@ public sealed partial class AppController : IDisposable
             : EdgeCapsuleLayout.StartTopMargin;
     }
 
-    // Reset ALL deep-capsule start heights to the default — both the legacy global scalar AND the
-    // per-queue dictionary. Must clear the dict too: layout reads per-queue values first, so
-    // leaving stale entries would resurrect old queue heights when the mode is re-enabled (and
-    // persist them to data.json). Single chokepoint so no reset path forgets the dict again.
+    // Reset every persisted per-queue start height to the product default.
     private void ResetDeepCapsuleStartTopMargins()
     {
         State.DeepCapsuleQueueStartTopMargins.Clear();
