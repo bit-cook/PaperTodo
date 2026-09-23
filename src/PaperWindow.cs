@@ -240,13 +240,8 @@ public sealed partial class PaperWindow : Window
         Start
     }
 
-    private void ClearCapsuleInteractionKeyboardFocus()
-    {
+    private void ClearCapsuleInteractionKeyboardFocus() =>
         WindowNative.ClearCurrentThreadKeyboardFocus();
-        Dispatcher.BeginInvoke(
-            (Action)WindowNative.ClearCurrentThreadKeyboardFocus,
-            System.Windows.Threading.DispatcherPriority.Background);
-    }
 
     private sealed class TodoDragState
     {
@@ -682,8 +677,6 @@ public sealed partial class PaperWindow : Window
         _deepCapsuleContextMenuSession = new DeepCapsuleContextMenuSession(
             controller,
             paper.Id,
-            Dispatcher,
-            IsPointInsideDeepCapsuleOwnerSurface,
             OnDeepCapsuleContextMenuOpenChanged);
         InitializePaperPresentationState();
 
