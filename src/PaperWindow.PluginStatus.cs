@@ -16,8 +16,9 @@ public sealed partial class PaperWindow
     {
         return _paper.Type == PaperTypes.Note &&
             !_bodyFailed &&
+            !_bodyDisabled &&
+            _controller.IsPluginEnabled(providerId) &&
             _paperBodyHost.HasCurrent &&
-            _bodyRuntimeVisible &&
             string.Equals(
                 NormalizeBodyProviderId(_paper.BodyProviderId),
                 providerId,
