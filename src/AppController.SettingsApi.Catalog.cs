@@ -44,7 +44,35 @@ public sealed partial class AppController
             value => State.ColorScheme = value,
             SettingEffects.Theme,
             title: Strings.Get("SettingsColorScheme"),
-            options: ["warm", "ink", "forest", "rose"]);
+            options: ColorSchemes.All);
+        yield return DefineSetting<string>("appearance.paper_skin",
+            () => PaperSkins.Resolve(State),
+            value => State.PaperSkin = value,
+            SettingEffects.Theme,
+            title: Strings.Get("SettingsPaperSkin"),
+            options: PaperSkins.All,
+            description: "Paper surface style. A native style may require restarting a session that was created with layered windows.");
+        yield return DefineSetting<bool>("appearance.match_auxiliary_material",
+            () => State.MatchAuxiliaryMaterialStrength,
+            value => State.MatchAuxiliaryMaterialStrength = value,
+            SettingEffects.Skin,
+            title: Strings.Get("SettingsMatchAuxiliaryMaterial"));
+        yield return DefineSetting<string>("appearance.material_transparency",
+            () => MaterialTransparencyLevels.Normalize(State.MaterialTransparency),
+            value => State.MaterialTransparency = value,
+            SettingEffects.MaterialTransparency,
+            title: SettingsSidebarLocalized("材质透明度", "Material transparency", "素材の透明度", "재질 투명도"),
+            options: MaterialTransparencyLevels.All);
+        yield return DefineSetting<bool>("appearance.hide_surface_outline",
+            () => State.HideSurfaceOutline,
+            value => State.HideSurfaceOutline = value,
+            SettingEffects.SurfaceOutline,
+            title: SettingsSidebarLocalized("隐藏外轮廓", "Hide outer border", "外枠を隠す", "외곽선 숨기기"));
+        yield return DefineSetting<bool>("appearance.native_material_always_active",
+            () => State.MicaAlwaysActive,
+            value => State.MicaAlwaysActive = value,
+            SettingEffects.NativeMaterial,
+            title: Strings.Get("SettingsMicaAlwaysActive"));
         yield return DefineSetting<string>("appearance.font_preset",
             () => State.UiFontPreset,
             value => State.UiFontPreset = value,

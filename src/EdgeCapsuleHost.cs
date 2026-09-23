@@ -215,6 +215,13 @@ internal sealed partial class EdgeCapsuleHost : IDisposable
         {
             return false;
         }
+        // The presented frame owns these paint roles, including the entire outgoing preview
+        // transition. They affect only SkinBorder optics; the presentation state machine stays authoritative.
+        if (Chrome is SkinBorder skin)
+        {
+            skin.UseLightweightMaterial = frame.Surface == EdgeCapsuleSurfaceKind.DockedPreview;
+            skin.IsEdgeActiveMaterial = frame.Surface == EdgeCapsuleSurfaceKind.DockedActive;
+        }
         var window = Window;
         var root = Root;
         var nativeHostBounds = frame.HostBounds;
@@ -817,20 +824,16 @@ internal sealed partial class EdgeCapsuleHost : IDisposable
         var visualSurfaceOffset = new TranslateTransform();
         visualSurface.RenderTransform = visualSurfaceOffset;
         root.Children.Add(visualSurface);
-        var chrome = new Border
+        var chrome = new SkinBorder
         {
+            IsCapsule = true,
             Margin = new Thickness(options.WindowChromeMargin),
             CornerRadius = new CornerRadius(options.ChromeCornerRadius),
             BorderThickness = new Thickness(1),
             Background = options.PaperBrush,
             BorderBrush = options.PaperBorderBrush,
             SnapsToDevicePixels = true,
-            Effect = new DropShadowEffect
-            {
-                BlurRadius = 4,
-                ShadowDepth = 0,
-                Opacity = 0.10
-            }
+            Effect = SkinBorder.CreateShadow(4, 0, 0.1)
         };
         Panel.SetZIndex(chrome, 0);
         visualSurface.Children.Add(chrome);
@@ -926,8 +929,9 @@ internal sealed partial class EdgeCapsuleHost : IDisposable
         visualSurface.Children.Add(shell);
 
         var outlineMargin = options.WindowChromeMargin - options.OutlineThickness + options.OutlineOverlap;
-        var outline = new Border
+        var outline = new SkinBorder
         {
+            IsOutline = true, IsCapsule = true,
             Margin = new Thickness(outlineMargin),
             CornerRadius = new CornerRadius(
                 options.ChromeCornerRadius + options.OutlineThickness - options.OutlineOverlap),
@@ -1321,6 +1325,24 @@ internal sealed partial class EdgeCapsuleHost : IDisposable
         return default;
     }
 
+    internal void UseDragBackground(DesktopBackgroundCapture.Snapshot snapshot)
+    {
+        if (!_disposed && Chrome is SkinBorder skin) skin.UseDragBackground(snapshot);
+    }
+
+    internal void EndDragBackground()
+    {
+        if (!_disposed && Chrome is SkinBorder skin) skin.EndDragBackground();
+    }
+
+    internal void RefreshSkin()
+    {
+        if (_disposed) return;
+        SkinBorder.Refresh(Chrome);
+        Chrome.Effect = SkinBorder.CreateShadow(4, 0, 0.1);
+        SkinBorder.Refresh(Outline);
+    }
+
     public void UpdateTheme(
         Brush paperBrush,
         Brush paperBorderBrush,
@@ -1340,6 +1362,8 @@ internal sealed partial class EdgeCapsuleHost : IDisposable
         _hoverBrush = hoverBrush;
         _textBrush = strongTextBrush;
         _weakTextBrush = weakTextBrush;
+        SkinBorder.Refresh(Chrome);
+        SkinBorder.Refresh(Outline);
         Chrome.Background = paperBrush;
         Chrome.BorderBrush = paperBorderBrush;
         Outline.BorderBrush = outlineBrush;

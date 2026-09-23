@@ -52,6 +52,18 @@
 | D-037 | 可浏览队列保留已验证的 live authority | Deferred | Edge performance / lifecycle |
 | D-038 | 活动就绪动画使用可撤销 render demand | Accepted | Edge animation / lifecycle |
 | D-039 | 插件 API 采用向后兼容的 major.minor 演进 | Accepted | 插件 / 兼容性 |
+| D-041 | 普通窗口原生 Mica 与 layered 胶囊边界 | Superseded by D-042 | 主题 / Window integration |
+| D-042 | 原生云母使用单一窗口外框，验证最终桌面像素 | Accepted | 主题 / Window integration |
+| D-043 | 透色亚克力试用可调色 accent，保留单窗口边界 | Experimental | 主题 / Window integration |
+| D-044 | 自绘材质顶栏使用零物理 glass，清透皮肤分离 alpha recipe | Superseded by D-045 | 主题 / Window integration |
+| D-045 | 系统材质保留 full glass，清透接法的零边距不通用 | Partially superseded by D-046 | 主题 / Window integration |
+| D-046 | 现代 redirection alpha 消除材质下方原生 caption | Experimental | 主题 / Window integration |
+| D-049 | Aero 独立透明合成与材质光照分层 | Experimental | 主题 / Rendering |
+| D-051 | Aero 清透合成与辅助材质强度 | Partially superseded by D-052 | 主题 / Rendering |
+| D-052 | 实际辅助窗口背景处理与材质清理 | Partially superseded by D-053 | 主题 / Rendering |
+| D-053 | 材质绘制、原生背景与可选采样职责收敛 | Partially superseded by D-054 | 主题 / Rendering |
+| D-054 | 辅助材质背景改为一次性静态快照，拖动复用虚拟桌面纹理 | Accepted | 主题 / Rendering |
+| D-055 | Aero 不采用 ACCENT_ENABLE_BLURBEHIND 原生模糊 | Rejected | 主题 / Window integration |
 
 ## 维护规则
 
@@ -1492,3 +1504,232 @@ Protocol 2.1 发布后，宿主继续加入了新的插件可见契约。如果�
 - `src/PaperCommandService.cs`、`src/PaperCommandService.NoteAssets.cs`：纯读取；mutation 仍保留原准备。
 - `src/PaperWindow.PluginBodies.cs`、`src/AppController.PluginRuntime.cs`：普通通知与首次启动失败。
 - `tests/PaperTodo.PersistenceChecks/Program.cs`、`tests/PaperTodo.SettingsApiChecks/PluginBoundaryChecks.cs`：真实文件、调用次数、初始属性和后台生命周期回归。
+
+---
+
+## D-041 — 普通窗口原生 Mica 与 layered 胶囊边界
+
+**Status:** Superseded by D-042（替代外框/裁切实现，保留原生材质与 Edge 边界）
+
+### Context
+
+PR #191 最初在现有透明 WPF 窗口上采样静态壁纸，生成类似云母的背景。用户随后明确要求原生 DWM Mica，壁纸模拟不再满足本次皮肤需求。与此同时，Edge bounded HWND 仍依赖 WPF alpha/shape 和 DComp translation-only 的已确定边界，不能为了皮肤把胶囊改成整窗原生背景，覆盖容量空白或打断 handoff。
+
+### Decision
+
+- 展开的普通纸片与设置窗口在 Windows 11 22H2+ 使用官方 `DWMWA_SYSTEMBACKDROP_TYPE` / `DWMSBT_MAINWINDOW`，不使用 undocumented 22000 属性，不引入 Windows App SDK 运行时。
+- 普通窗口的 non-layered 模式只在启动时根据已保存的配色确定。由其他皮肤切入时提示重启，并先显示实色；不关闭重建正在编辑的窗口，不迁移光标或撤销栈。退出保存仍经过现有生命周期。
+- DWM、glass、dark-mode 和窗口区域设置都成功后才让 WPF chrome 透明。正文和插件仍获得实色 `Theme.PaperBrush`，原生背景失败时不留透明正文壳。
+- 原生背景区域取自既有 chrome 的最终布局，按当前 DPI 更新裁切；同一几何不重复设置。裁切期间不使用会给文字投影的 WPF 外壳阴影，也不承诺自定义窗口区域具有系统阴影。
+- 折叠形态、形态动画与部分透明时关闭原生背景并恢复 WPF alpha 绘制；完成边界恢复 Mica。所有贴边、拖动、主和系绳胶囊保留原 layered 路线和实色背景，不接入原生适配器。
+- 移除壁纸采样、模拟模糊、异步材质缓存。无后台 HWND 或逐帧截图。关闭透明效果、高对比度和接口失败使用实色；系统的材质节能/非活动回退仍由 DWM 决定。
+
+### Why / Consequences
+
+原生材质属于 HWND 合成，不是一个可放进所有 WPF Brush 槽位的画刷。把非矩形动态 Edge surface 强行挂到 full-HWND Mica 上会改变既有 shape authority；一次性重启普通窗口比重建用户正在编辑的所有对象更简单，也不会丢失未持久化的撤销状态。代价是首次换肤需要重启，胶囊不具备原生材质，真机视觉、跨 DPI 与 alpha fallback 仍需人工确认；这些限制在设置说明和 PR 中明确呈现。
+
+### Evidence
+
+- `src/NativeMicaBackdrop.cs`、`src/DwmMicaApi.cs`。
+- `src/AppController.Mica.cs`、`src/AppController.Settings.cs`。
+- `src/PaperWindow.cs`、`src/PaperWindow.Lifecycle.cs`。
+- `tests/PaperTodo.MicaChecks/Program.cs`。
+- PR #191 的原生替换提交；原始壁纸模拟仅保留在 git 历史中。
+
+
+---
+
+## D-042 — 原生云母使用单一窗口外框，验证最终桌面像素
+
+**Status:** Accepted
+
+### Context
+
+用户报告展开纸片出现白色外圈、内层纸面压暗，且明确未开启失焦半透明。旧适配器把带 8 DIP 阴影留白的 WPF Border 与全 HWND 原生背景并置，手动处理 NCCALCSIZE 并按内层圆角裁切；启动/形态动画又在 legacy blur-behind alpha 和系统背景之间切换。仅检查 HRESULT、背景属性与裁切坐标无法证明最终桌面图像正确，不能据此把压暗归因于用户设置或正常失焦行为。
+
+### Decision
+
+- 保留官方 DWM Mica 与启动时选择 non-layered 普通窗口的策略，不引入 Windows App SDK，不重建窗口、编辑器、光标或撤销栈。
+- `WindowChrome` 是普通原生窗口唯一 non-client/glass 集成入口，移除适配器自己的 NCCALCSIZE 和 SetWindowRgn 路线。展开纸片在整个会话中填满 HWND，实色或动画回退时也不重新出现阴影外边距；圆角/外框由 DWM 处理，缩放命中保留现有实现。
+- legacy blur-behind alpha 只用于折叠、形态动画和显式透明的 WPF 回退；恢复系统背景前明确停用它。启动淡入提交终值并清除 opacity 时钟，过期显示回调不得覆盖后续隐藏状态。
+- 原生形态动画的系统缩放外框必须在动画入口关闭、目标形态完成或中断时恢复。不要在材质类的布局/宽高监听中反复设置 `ResizeMode` 或推算 HWND 尺寸：前者会覆盖结束状态，后者让旧的 16 DIP 外边距与原生展开态零外边距产生第二套尺寸口径。窗口动画直接应用同一进度对应的内外尺寸和外边距，反转与中断继续走同一个结束路径。
+- 不把截图中的灰色直接判定为 DWM 非活动色。系统允许的材质回退仍由 DWM 管理；测试同时验证激活/失焦、浅/深色、启动淡入、折叠展开、隐藏显示、缩放和正文黑白色块的最终桌面像素。
+- Edge、drag、master、tether 的 layered shape/translation-only ownership、数据持久化和正文编辑行为不变。
+
+### Rejected / Why
+
+在 Windows CI 上试验 `MicaController.SetTarget(WindowId, DesktopWindowTarget)` 直接挂到现有 WPF HWND：接口成功并不代表兼容，捕获到的结果是背景覆盖 WPF 正文。没有把这条试验路线或额外 SDK 运行时留在产品中；要避免再次为了一个皮肤增加平行内容宿主、窗口和打包路径。
+
+原生系统圆角不承诺复刻旧皮肤的 16 DIP 轮廓。桌面捕获只属于测试，不是运行时生成材质的输入。CI 的 Windows Server 图形会话也不能替代用户 Windows 11 显卡、多屏 DPI 和系统材质策略的真机验证。
+
+### Evidence
+
+- `src/NativeMicaBackdrop.cs`、`src/DwmMicaApi.cs`、`src/PaperWindow.cs`。
+- `src/AppController.cs` 的显示动画终点，`src/AppController.Settings.cs` 的窗口集成。
+- `tests/PaperTodo.MicaChecks/Program.cs`、`VisualChecks.cs` 与 Release CI 的桌面/WPF 双通道捕获。
+
+
+## D-043 — 透色亚克力试用可调色 accent，保留单窗口边界
+
+**Status:** Experimental（仅透色模式；Windows 11 真机视觉与拖动性能待验）
+
+### Context
+
+标准和透色亚克力原先共享固定的系统 Acrylic；降低 WPF 白色覆盖层强度后，用户反馈透色模式明显发灰。用户授权试用社区 WPF 可调色接法。D-042 的单窗口和形态动画边界继续有效。
+
+### Decision / Why
+
+- 仅透色模式使用 `SetWindowCompositionAttribute` 的 `WCA_ACCENT_POLICY`，直接设置原生混合颜色与 alpha；WPF 外壳不再叠加底色。标准云母/亚克力保留官方系统 backdrop。
+- accent 只保留顶部 1 DIP glass，系统 backdrop 使用 full glass；由现有 `WindowChrome` 和适配器统一切换。不能直接设为 zero glass：WPF 会在缩放时安装窗口 region，破坏系统圆角和阴影。 顶部 glass 必须显式使用纸片边框色；`DWMWA_COLOR_NONE` 只适用于边框，不能用它隐藏 caption，否则该区域可能露出系统强调色。进入动画、退出透色模式或释放时清除 accent，失败恢复实色。正文、HWND、编辑器和 Edge 胶囊不重建。
+- 这是未公开保证兼容性的 accent policy，有版本与拖动/缩放性能代价；不能以接口成功或 CI 像素正确替代用户机器上的视觉和流畅度确认。暂不引入 Windows App SDK、第二个内容窗口或背景捕获。
+
+### Evidence
+
+- `src/DwmMicaApi.cs` 的 `SetClearAcrylic`、`src/NativeMicaBackdrop.cs` 的材质切换与清理。
+- `tests/PaperTodo.MicaChecks/Program.cs` 的接法互斥/失败回退；`VisualChecks.cs` 的白底/彩色底和形态动画捕获。
+- 社区接法：[SlimeNull 的 WPF 示例](https://slimenull.com/posts/20240530104846/)、[WindowEffectTest 源码](https://github.com/TwilightLemon/WindowEffectTest/blob/master/WindowEffectTest/WindowMaterial.cs)。
+
+
+---
+
+## D-044 — 自绘材质顶栏不再叠加 native caption，清透玻璃不用磨砂
+
+**Status:** Superseded by D-045（仅纠正所有材质统一零 glass 的选择）。
+
+日期：2026-09-10。补充 D-042 / D-043，替代其 full/top-1 glass margin 细节，不替代单窗口边界。
+
+用户真机反馈暴露了 WPF-only 图像检查的盲区：透明 WPF 顶栏下仍有固定 CAPTION_COLOR 的实色 native 带；透色模式保留顶部 1 DIP glass 还可能露出亮线。Windows 独立探针对比确认固定 caption 色与最终桌面顶栏／正文色差有关。
+
+当前选择：caption 使用 COLOR_DEFAULT，适配器刷新原生状态时把实际 DWM glass margin 归零；WindowChrome 的逻辑 glass 标志保持非零，仅用于留在无 HRGN 的管理路径。禁止通过裁窗口、负 margin 或新增 NCCALCSIZE 处理补洞。主题、DPI、composition 和形态终点沿用既有刷新入口。
+
+
+验证必须包含最终桌面顶栏／正文像素和清透背景的高频条纹，而不仅仅是 WPF Background.A 或不同皮肤图像 hash；真实 Windows 11 主观材质与混合 DPI 仍需人工验收。
+
+---
+
+## D-045 — 系统材质保留 full glass，清透接法的零边距不通用
+
+**Status:** Partially superseded by D-046（不支持现代 alpha 的系统继续使用此兼容路径）
+
+**Context / Why:** `d36a4f47` 把全部材质的实际 DWM glass margin 归零，同时关闭 legacy alpha。用户反馈云母纯黑、带半透明画刷的亚克力／描图纸／Aero 为深灰：透明 WPF 像素没有系统材质承接，白色覆盖层只能把黑底混成灰底。原生 API 成功、顶栏与正文同色，都不能证明背景已正确合成。独立探针原本使用 full glass，不能据此推导所有接法都应清零。
+
+**Decision:** 恢复系统 Mica/Acrylic 的 full glass，保持清理旧 alpha → 设置对应 glass → 启用系统 backdrop 的顺序；零实际边距只属于 accent 与清透 alpha 接法。caption 颜色仍用默认值，不恢复实色顶栏遮盖。窗口、编辑器、形态动画和 Edge authority 不变。
+
+**Evidence:** `NativeMicaBackdrop.Refresh` 与 `PaperTodo.MicaChecks` 的 full-glass 互斥检查、浅色云母黑底拒绝检查及最终桌面捕获。Windows Server 无法显示真实 Acrylic 透色时仍记录 SKIP，不冒充 Windows 11 真机验收。
+
+
+---
+
+## D-046 — 显式 redirection alpha 消除材质下方原生 caption
+
+**Status:** Experimental
+
+**Context / Why:** full glass 保住了系统材质，但即使 WPF 顶栏完全透明，原生 extended caption 仍可盖住背景。均匀色的 Server 回退材质会隐藏这个错误；仅比较顶栏与正文同色不够。
+
+**Decision:** Windows 11 26100+ 设置 `DWMWA_REDIRECTIONBITMAP_ALPHA`，成功后才将系统材质的实际 glass margin 归零。API 不支持时保留 D-045 的 full glass，绝不恢复无 alpha 的零 glass 黑底路线。仅改变现有 adapter 的合成参数，不创建第二个内容 HWND、负 margin 或窗口 region。释放时清理自己启用的属性。
+
+**Evidence:** `NativeMicaBackdrop.Refresh`、`DwmMicaApi.SetRedirectionAlpha`；`NativeSurfaceChecks.CheckCaptionSentinel` 故意将原生 caption 设成紫红色并验证最终桌面顶栏像素不变，使用旧 full-glass 路径的紫红色正对照，并避免在取样前泵 UI 消息导致 marker 被刷新重置；另保留黑底／能力失败回退检查。微软 `DWMWINDOWATTRIBUTE` 文档明确 alpha 通道要求 premultiplied 内容、最低 build 26100。旧 OS 的顶栏视觉与真实 Windows 11 多屏效果不能借用 Server 的结果作已验收结论。
+
+---
+
+## D-049 — Aero 独立透明合成与材质光照分层
+
+**Status:** Partially superseded by D-051 / D-052（state=3 黑底禁区保留）
+
+**Context / Why:** 用户反复反馈 Aero 与标准亚克力无区别或出现假的大片反光。系统 Acrylic 自带亮度／染色层，叠加另一层 WPF 染色不能得到清透玻璃；陶瓷的整面明暗渐变也不足以表达釉面。
+
+**Decision:** Aero 的内部 `aeroGlass` recipe 在现有 adapter 内使用低中性色 alpha 的兼容 accent blur（state=4），不叠加 system backdrop，主要染色由 WPF 统一绘制并绘制固定逻辑尺寸、轻微位置视差的反光。与 Clear Acrylic 的 state=4 共享低层接口和清理，不复制状态 owner。接口不公开，任一步失败仍回退不透明表面；原标准云母／亚克力接法不改。陶瓷用不透明漫反射底、局部清釉反光和缓存的法线边缘照明，不新增采样或材质定时器。
+
+**Rejected:** 在受控白色后窗上，旧 state=3 纯模糊 API 返回成功但最终桌面为固定黑底；不能以 HRESULT 成功认定有效。不将这条接法作为当前 Aero 后端。CI 若所有透明模糊均被系统抑制，只有独立的标准 Acrylic 后窗对照也失败时，才跳过透色比较；浅色不得黑底的检查始终执行。
+
+**Evidence / Limits:** `Program` 验证 Aero／Acrylic 双向切换、失败清理和 alpha 互斥；`MaterialStudyChecks` 检查开口、视差生命周期和最终桌面截图。Aero 的反光与位置视差为独立实现，不声称 Windows 7 像素级复现。
+
+
+---
+
+## D-051 — Aero 清透合成与辅助材质强度
+
+**Status:** Partially superseded by D-052（辅助表面开始处理真实局部背景；Aero alpha 保留）
+
+**Context:** 用户反复反馈 Aero 过度磨砂，同时胶囊与菜单的材质强弱需要和正文／命中逻辑分离。
+
+**Decision:** Aero 复用现有清透 alpha 接法，去掉 Acrylic 模糊，保留蓝色透光、柔化斜反光和移动视差；不恢复已失败的 state=3，也不为 Aero 新增采样和截图排除。所有配色对云母和亚克力开放，Neutral 不改变原系统色。胶囊、右键菜单及子菜单复用材质绘制，`MatchAuxiliaryMaterialStrength` 关闭时减弱材质并增加更接近普通纸片的底层，开启时使用完整强度。文字、图标、host 描边与命中不衰减。
+
+**Validation / limits:** 原生互斥与失败回退、配色选择与旧配置、辅助表面强度及前景像素、菜单模板实例化、Aero 后窗响应和编辑器身份检查进入 `PaperTodo.MicaChecks`。Windows CI 不代替用户对真实 Windows 11、HDR、混合 DPI 和高刷新率流畅度的验收。
+
+## D-052 · 实际辅助窗口背景处理与材质清理（2026-09-11）
+
+**Status:** Partially superseded by D-053（资源与缓存边界）；保留辅助面真实背景与 Aero alpha 后端。
+
+**Context / Why:** 用户要求胶囊与菜单的弱档也真实处理背景，而不是只给实色表面染色。
+
+**Decision:** 分层云母／亚克力／透色亚克力／描图纸使用有限范围的局部 Gaussian 背景柔化；`SkinBorder.CaptureHost` 使用每个表面的实际 `HwndSource`，避免捕获／排除菜单 owner。辅助强度为完整或弱档，两者都使用同一正文、命中和资源 owner；不重建 HWND 或编辑器。Aero 使用既有透明通道，不增加捕获。已退役皮肤的运行时代码、资源、选项和专属测试删除，旧数据走通用未知 ID 回退。
+
+**Lifetime / limits:** 背景处理沿用像素预算、单最新帧 mailbox 和逐源释放；监听源 HWND、祖先 opacity 与卸载。独立开关明确软件采样表面的截图／共享排除副作用。辅助 Mica/Acrylic 只是软件近似，SDR、混合 DPI 和主观审美边界不冒充原生或真人验收。
+
+**Validation:** 实际 layered 窗口、生产 popup／submenu 模板测试两个强度档、前景不变、所有者隔离及隐藏／半透明／关闭恢复；同时保留主纸片与编辑回归。
+
+---
+
+## D-053 — 材质绘制、原生背景与可选采样职责收敛（2026-09-22）
+
+**Status:** Partially superseded by D-054（BackgroundSession 的职责边界保留；持续采样与采样节拍由 D-054 替代）
+
+**Context / Why:** #227 多轮材质实验后，功能已收敛，但绘制控件仍承担采样线程、HWND 观察、取消和缓存失效；普通原生窗口也会注册采样相关监听，辅助开关会重建无关顶栏图标，改变尺寸又重建不依赖尺寸的渐变。用户要求完整重构，同时必须理解旧修复的原因，不以减少代码行为为由恢复已解决的黑底、首帧闪烁、菜单打不开或编辑器重建。
+
+**Decision:** 保留 NativeMicaBackdrop 的原生合成所有权，SkinBorder 保留绘制和轻量接入，将采样／位图／呈现资源收敛到可选 BackgroundSession，实际 HWND 与祖先透明度订阅收敛到 MaterialSurfaceHost。仅辅助采样或 Aero 透光／视差需要观察；不创建通用插件化材质框架、全局截图中心或额外窗口。设置变化沿现有共享事务发布，按画刷、几何、采样、动画分别失效。原生环境值缓存通过真实系统事件更新；激活外观独立于背景安装。
+
+**Preserved historical fixes:**
+- `37c10b27` 的真实右键回归：WPF ContextMenuService 使用 SetCurrentValue。异步预备完成后必须重放仍有效的请求，不能仅 CoerceValue 读回被强制为 false 的默认值。
+- `8d22d040` 的 Clear Acrylic 首帧：accent 不能先于真正 ContentRendered 启用。重新请求重绘不等价于已经产生首张 redirected bitmap。
+- `cabd99a` 的呈现与采样：预备首帧和映射变化必须冻结完成后发布，像素与世界坐标一起切换；同一区域保留可写位图复用；沿用 SRCCOPY，避免 CAPTUREBLT 扰动指针；实时 popup 的动画仍用本地值关闭，防止动态资源重新引入 Fade。
+- D-045 / D-046 的 full glass 与现代 alpha 能力顺序不改。零 margin 不是适用于所有系统的通用修复。PaperWindow/Edge 的尺寸、形状、DComp translation-only、正文与撤销栈 owner 不改。
+
+**Performance boundaries:** 菜单的采样余量独立于拖动胶囊，模糊半径、采样节拍与弱档真实背景语义不变。较小覆盖范围可能在高 DPI 下恢复原像素密度，因此不能把面积降幅冒充所有机器上的速度或内存降幅。Aero 仅缓存直边相同深度／法线的光照结果，以明暗、异形圆角、开口和分数 DPI 的逐字节对照约束。保留缓冲清零、零等待上传、背景与正文分离、每个 popup 独立释放和截图排除提示，不为了少几次拷贝削弱所有权。
+
+**Research / alternatives:** 阅读 [WPF UI WindowBackdrop](https://github.com/lepoco/wpfui/blob/ffebacd61058170cf63864b7d5aa730cffff848a/src/Wpf.Ui/Controls/Window/WindowBackdrop.cs) 的窄原生适配边界；阅读 [dotnet/wpf WriteableBitmap](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Imaging/WriteableBitmap.cs)、[issue 5816](https://github.com/dotnet/wpf/issues/5816) 的锁与缩放冻结讨论和 [BlurEffect 原生实现](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/WpfGfx/core/resources/BlurEffect.cpp)。这些支持不跨异步持锁、后台准备／UI 短上传、明确 native 与软件采样边界；不是把第三方库直接替换进本项目的理由。截图排除仍服从 [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) 的本进程顶层窗口与 DWM 限制，并非安全／DRM 边界。未引入新的 capture 后端、降低应用帧率或用先开普通纸片再补材质掩饰首帧延迟。
+
+**Validation:** MaterialRefactorChecks 检查并发最新帧交接／停止、缓存失效、主窗口无采样资源、Aero 像素等价、菜单取消／替换／迟到结果／卸载／超时。既有 MicaChecks 保留真实原生窗口、生产右键与子菜单、首帧素材、前景像素、位图复用、截图排除和设置切页。`tools/PaperTodo.MaterialBenchmarks` 为可选手动测量入口，使用同一 harness 在两个版本独立进程测 CPU 指令记录时间、线程分配、菜单打开延迟和真实鼠标拖动；不进入默认回归，也不是屏幕 FPS、GPU/DWM 占用或 Windows 11 人工视觉验收。
+
+---
+
+## D-054 — 辅助材质背景改为一次性静态快照，拖动复用虚拟桌面纹理（2026-09-23）
+
+**Status:** Accepted
+
+**Context / Why:** D-053 将背景处理收敛到可选 `BackgroundSession`，但当时仍保留持续采样、帧检测与采样节拍。实际产品不需要材质跟随桌面内容实时变化；持续截图、变化判断和后台 worker 增加了常驻职责、性能波动与测试复杂度。用户只需要打开菜单或停住胶囊时看起来与当前位置背景一致，拖动期间则需要连续的空间对应，而不是连续重新截图。
+
+**Decision:** 菜单在打开前只准备一次局部背景快照，打开期间冻结；静止胶囊在稳定位置只读取一次局部背景，不再按 100/250ms 轮询桌面。胶囊开始拖动时只读取一次整个虚拟桌面，宽高各降至 50%，一次性应用轻微高斯模糊；拖动过程中只按屏幕坐标移动同一张纹理的裁剪，不再截图、不再模糊。贴边胶囊与 floating drag host 共用同一张拖动纹理，docking handoff 期间继续保留，避免中途闪回；拖动结束后清掉全桌面纹理，并在最终位置重新读取一次局部静态快照。Aero 不读取桌面背景。
+
+**Ownership / settings:** 删除 `LiveBackgroundProcessing`、`appearance.live_background_processing` 与对应 UI 开关；静态快照是需要软件背景材质的实现细节，不再作为用户可切换的实时处理模式。截图只存在于本进程内存，不保存或上传。材质透明度是独立设置，只改变材质覆盖/染色强度，不使用 `Window.Opacity`，不让正文、控件、Aero 反光、relief 或描图纸纤维一起消失。
+
+**Validation:** `DesktopBackgroundCapture` 必须是 one-shot capture，不存在 polling loop、motion wake-up 或 change detection；`MaterialDragChecks` 验证静止快照移动时只重投影、拖动纹理为 50% 虚拟桌面且已预模糊、拖动结束只补一次最终局部快照。真实鼠标拖动基准额外验证按键尚未释放时 sampled capsule 已进入 drag snapshot 状态，防止异步截图直到 `DragMove` 返回后才发布的假实现。
+
+
+---
+
+## D-055 — Aero 不采用 `ACCENT_ENABLE_BLURBEHIND` 原生模糊（2026-09-23）
+
+**Status:** Rejected
+
+**Context / Why:** Aero 清透路线在高背景复杂度下可读性有限，因此尝试避免重新引入截图 worker，优先让 Windows compositor 直接完成实时背景模糊。现有 `DwmMicaApi` 已经通过 `SetWindowCompositionAttribute` 使用 AccentPolicy state 4 实现 Clear Acrylic，因此实验复用同一封装，将 Aero 改为 `ACCENT_ENABLE_BLURBEHIND`（state 3），并保留 PaperTodo 自己的 tint、readability veil、reflection 与 relief。
+
+**Experiment:** state 3 在接口层能够成功安装，Aero / Acrylic / Clear Acrylic 的切换、失败回退和同 HWND 热切换测试也能通过。随后又单独试过把 Aero 从 Windows 11 的 `DWMWA_REDIRECTIONBITMAP_ALPHA` 路径隔离，避免两种合成机制互相干扰。
+
+**Result / Pitfall:** HRESULT 成功不代表真实桌面像素已经进入模糊背景。真实窗口像素验证中，Aero 后方分别放置白色与蓝色窗口时，state 3 路线得到的前景仍是近似相同的深灰底（实验记录中两种后景均约为 `Color [61,64,68]`），说明当前 **WPF + WindowChrome + 自定义透明内容** 组合没有可靠采样真实后方窗口。去掉 redirection alpha 后仍未通过真实像素验证，因此不能把“AccentPolicy 调用成功”当作可用材质证据。
+
+**Decision:** 当前 PaperTodo 不采用 state 3 作为 Aero 背景模糊实现，恢复既有 clear-alpha Aero。若未来重新需要实时模糊，必须先在与 PaperTodo 相同的 HWND / WindowChrome / WPF 内容结构上通过“不同真实后景产生不同最终像素”的验收；否则优先使用 PaperTodo 自己显式拥有的静态/低频背景采样，而不是继续叠加未验证的 compositor recipe。
+
+**Rejected / Do not reintroduce:**
+
+- 不因为 `SetWindowCompositionAttribute` 返回成功就认定 BlurBehind 工作正常。
+- 不在没有真实后景像素对照的情况下重新接入 state 3。
+- 不把 state 3 与 `DWMWA_REDIRECTIONBITMAP_ALPHA` 的组合继续扩展成另一套恢复/自愈体系。
+- 若重新实验，失败实现仍应撤回，只保留结论与最小证据。
+
+**Evidence:**
+
+- `c1e92b6413578971d4af690b435d215f907a9583` — 首次将 Aero 切到 AccentPolicy state 3。
+- `903d3a4ec2a34656b8e4b9954455c2203bd203e7` / `21e09d4b30c6f72347597dc6582725eb98d87bf5` — 隔离 redirection alpha 并做真实材质验证。
+- `b93efc3b369e231070198146a44468962427d5f0` — 撤回失败的 BlurBehind 产品实现。
+- `tests/PaperTodo.MicaChecks/MaterialStudyChecks.cs` — 真实后景像素对照边界。

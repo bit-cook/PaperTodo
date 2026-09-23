@@ -177,7 +177,19 @@ public sealed partial class PaperWindow
 
         _todoRows.Clear();
         _todoRows.AddRange(orderedRows);
-        SyncTodoAppendArea();
+        if (_appendArea == null || !_todoPanel.Children.Contains(_appendArea))
+        {
+            _todoPanel.Children.Add(BuildTodoAppendArea());
+        }
+        else
+        {
+            var appendIndex = _todoPanel.Children.IndexOf(_appendArea);
+            if (appendIndex != _todoPanel.Children.Count - 1)
+            {
+                _todoPanel.Children.RemoveAt(appendIndex);
+                _todoPanel.Children.Add(_appendArea);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(targetFocus))
         {
@@ -273,7 +285,7 @@ public sealed partial class PaperWindow
                 Math.Max(AppTypography.Scale(3), metrics.TextVerticalPadding + AppTypography.Scale(1)),
                 0,
                 Math.Max(AppTypography.Scale(3), metrics.TextVerticalPadding + AppTypography.Scale(1))),
-            CornerRadius = new CornerRadius(RadiusControl),
+            CornerRadius = new CornerRadius(Theme.IsPixelSkin ? 0 : RadiusControl),
             BorderThickness = new Thickness(1),
             BorderBrush = AppendBorderBrush,
             Background = AppendBgBrush,
@@ -478,7 +490,7 @@ public sealed partial class PaperWindow
         {
             Margin = new Thickness(0, 2, 0, 2),
             Padding = new Thickness(2),
-            CornerRadius = new CornerRadius(RadiusControl),
+            CornerRadius = new CornerRadius(Theme.IsPixelSkin ? 0 : RadiusControl),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0, 2, 0, 2),
@@ -882,7 +894,7 @@ public sealed partial class PaperWindow
                 MinHeight = Math.Max(22, metrics.RowMinHeight - 2),
                 Margin = new Thickness(1, 0, 0, 0),
                 Padding = showLinkedPaperName ? new Thickness(3, 1, 3, 1) : new Thickness(0),
-                CornerRadius = new CornerRadius(RadiusControl),
+                CornerRadius = new CornerRadius(Theme.IsPixelSkin ? 0 : RadiusControl),
                 Background = linkedPaperActive ? LinkedPaperLightBgBrush : LinkedPaperNormalBgBrush,
                 Cursor = Cursors.Hand,
                 ToolTip = runLinkedScriptOnClick
@@ -1959,7 +1971,7 @@ public sealed partial class PaperWindow
             Width = Math.Max(state.SourceRow.ActualWidth, 160),
             MinHeight = Math.Max(state.SourceRow.ActualHeight, 30),
             Padding = new Thickness(2),
-            CornerRadius = new CornerRadius(RadiusControl),
+            CornerRadius = new CornerRadius(Theme.IsPixelSkin ? 0 : RadiusControl),
             Background = PaperBrush,
             BorderBrush = Theme.Tint(150),
             BorderThickness = new Thickness(1),

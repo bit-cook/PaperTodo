@@ -2,7 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Interop;
 using System.Text.RegularExpressions;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -34,6 +37,92 @@ namespace PaperTodo;
 
 public sealed partial class PaperWindow
 {
+    private CancellationTokenSource? _capsuleDragBackgroundCapture;
+    private DesktopBackgroundCapture.Snapshot? _capsuleDragBackgroundSnapshot;
+
+    private void BeginCapsuleDragBackground(IntPtr excludeHwnd)
+    {
+        EndCapsuleDragBackground();
+        if (!_controller.State.MatchAuxiliaryMaterialStrength ||
+            !PaperSkins.UsesSampledAuxiliary(Theme.Skin) ||
+            SystemParameters.HighContrast ||
+            !DwmMicaApi.Instance.EffectsEnabled)
+        {
+            return;
+        }
+
+        var capture = new CancellationTokenSource();
+        _capsuleDragBackgroundCapture = capture;
+        _ = PrepareCapsuleDragBackgroundAsync(excludeHwnd, capture);
+    }
+
+    private async Task PrepareCapsuleDragBackgroundAsync(
+        IntPtr excludeHwnd,
+        CancellationTokenSource capture)
+    {
+        try
+        {
+            var snapshot = await DesktopBackgroundCapture.PrepareDragAsync(
+                excludeHwnd,
+                capture.Token);
+            if (snapshot == null ||
+                capture.IsCancellationRequested ||
+                !ReferenceEquals(capture, _capsuleDragBackgroundCapture))
+            {
+                return;
+            }
+
+            _capsuleDragBackgroundSnapshot = snapshot;
+            ApplyCapsuleDragBackground(snapshot);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or
+            InvalidOperationException or ExternalException or ArgumentException or NotSupportedException)
+        {
+            if (ReferenceEquals(capture, _capsuleDragBackgroundCapture))
+            {
+                _capsuleDragBackgroundCapture = null;
+                capture.Dispose();
+            }
+            Debug.WriteLine("Capsule drag background unavailable; keeping the live material: " + ex.Message);
+        }
+    }
+
+    private void ApplyCapsuleDragBackground(DesktopBackgroundCapture.Snapshot snapshot)
+    {
+        if (_capsulePointerState == CapsulePointerState.NativeMoving &&
+            _paperChrome is SkinBorder paperSurface)
+        {
+            paperSurface.UseDragBackground(snapshot);
+        }
+
+        if (IsDeepCapsuleReordering)
+        {
+            _edgeCapsuleHost?.UseDragBackground(snapshot);
+            _deepCapsuleFloatingDragHost?.UseDragBackground(snapshot);
+        }
+    }
+
+    private void EndCapsuleDragBackground()
+    {
+        var capture = _capsuleDragBackgroundCapture;
+        _capsuleDragBackgroundCapture = null;
+        if (capture != null)
+        {
+            capture.Cancel();
+            capture.Dispose();
+        }
+
+        _capsuleDragBackgroundSnapshot = null;
+        if (_paperChrome is SkinBorder paperSurface)
+            paperSurface.EndDragBackground();
+        _edgeCapsuleHost?.EndDragBackground();
+        if (!IsDeepCapsuleDockingHandoff && !IsDeepCapsuleDockingReveal)
+            _deepCapsuleFloatingDragHost?.EndDragBackground();
+    }
+
     private enum CapsulePointerState
     {
         Idle,
@@ -395,6 +484,7 @@ public sealed partial class PaperWindow
                 try
                 {
                     _collapsedFromMaximized = false;
+                    BeginCapsuleDragBackground(new WindowInteropHelper(this).Handle);
                     DragMove();
                 }
                 catch (InvalidOperationException)
@@ -403,6 +493,7 @@ public sealed partial class PaperWindow
                 }
                 finally
                 {
+                    EndCapsuleDragBackground();
                     TryAttachExperimentalCapsuleMagnetAfterDrag();
                     SetCapsulePointerState(CapsulePointerState.Idle);
                     leftArea.Cursor = Cursors.Hand;
@@ -596,6 +687,7 @@ public sealed partial class PaperWindow
 
         PrepareExperimentalAttachmentForFormTransition(collapsed);
 
+        var startChromeMargin = _paperChrome.Margin.Left;
         double? interruptedVisualWidth = null;
         double? interruptedVisualHeight = null;
         if (IsPaperFormTransitioning)
@@ -604,10 +696,10 @@ public sealed partial class PaperWindow
             // collapse the HWND remains expanded while the chrome is scaled toward the capsule;
             // using Window.Width here made a reversed transition jump to an endpoint first.
             interruptedVisualWidth = IsFiniteWindowCoordinate(_paperChrome.Width)
-                ? _paperChrome.Width + WindowChromeInset
+                ? _paperChrome.Width + (_controller.UsesNativeMicaWindows ? startChromeMargin * 2 : WindowChromeInset)
                 : Width;
             interruptedVisualHeight = IsFiniteWindowCoordinate(_paperChrome.Height)
-                ? _paperChrome.Height + WindowChromeInset
+                ? _paperChrome.Height + (_controller.UsesNativeMicaWindows ? startChromeMargin * 2 : WindowChromeInset)
                 : Height;
             double currentShellOpacity = _shell.Opacity;
             double currentCapsuleOpacity = _capsuleShell.Opacity;
@@ -695,9 +787,21 @@ public sealed partial class PaperWindow
         double finalTargetHeight = rememberedDeepCapsuleExpandedGeometry?.HeightDip ?? RoundToDevicePixelY(targetHeight);
 
         _paper.IsCollapsed = collapsed;
+        if (_controller.UsesNativeMicaWindows)
+        {
+            // Alpha fallback has a WPF-shaped surface. A resizable native frame can expose
+            // the system accent outline in its transparent gutter while shrinking. Remove
+            // it once at entry; the completion/settle paths restore the final resize mode.
+            ResizeMode = ResizeMode.NoResize;
+            RefreshNativeMica(force: true);
+        }
         RefreshExperimentalOpacity();
-        var expandedWidth = collapsed ? RoundToDevicePixelX(Width) : finalTargetWidth;
-        var expandedHeight = collapsed ? RoundToDevicePixelY(Height) : finalTargetHeight;
+        var expandedWidth = collapsed
+    ? RoundToDevicePixelX(_controller.UsesNativeMicaWindows && interruptedVisualWidth.HasValue ? _transitionBaseWidth : Width)
+    : finalTargetWidth;
+var expandedHeight = collapsed
+    ? RoundToDevicePixelY(_controller.UsesNativeMicaWindows && interruptedVisualHeight.HasValue ? _transitionBaseHeight : Height)
+    : finalTargetHeight;
         if (animate)
         {
             _transitionBaseWidth = expandedWidth;
@@ -706,12 +810,19 @@ public sealed partial class PaperWindow
             _startTransitionHeight = interruptedVisualHeight ?? (collapsed ? expandedHeight : PaperLayoutDefaults.CapsuleHeight);
             _targetTransitionWidth = collapsed ? finalTargetWidth : expandedWidth;
             _targetTransitionHeight = collapsed ? finalTargetHeight : expandedHeight;
+            _startTransitionChromeMargin = startChromeMargin;
+            // _paper.IsCollapsed already reflects the target form here. Do not read the
+            // source chrome's current margin: collapse targets the 8-DIP WPF gutter while
+            // expanded native papers target edge-to-edge chrome.
+            _targetTransitionChromeMargin = UsesNativePaperChrome ? 0 : WindowChromeMargin;
 
             // Establish the initial visual BEFORE native placement can resize the HWND and
             // synchronously run WPF layout. Otherwise the full-size chrome is exposed first,
             // then reset to capsule size when the expand animation starts.
-            _shell.Width = Math.Max(0, expandedWidth - WindowChromeInset);
-            _shell.Height = Math.Max(0, expandedHeight - WindowChromeInset);
+            _shell.Width = Math.Max(0, expandedWidth - (_controller.UsesNativeMicaWindows
+        ? _paperChrome.BorderThickness.Left + _paperChrome.BorderThickness.Right : WindowChromeInset));
+            _shell.Height = Math.Max(0, expandedHeight - (_controller.UsesNativeMicaWindows
+        ? _paperChrome.BorderThickness.Top + _paperChrome.BorderThickness.Bottom : WindowChromeInset));
             TransitionProgress = 0.0;
             UpdateTransitionVisuals(0.0);
             if (!collapsed)
@@ -808,11 +919,18 @@ public sealed partial class PaperWindow
         // null Effect (snap suppression) can't make the local `is DropShadowEffect` update
         // silently no-op and leave the wrong shadow parameters on the capsule/expanded form.
         ApplyPaperChromePresentation();
+        // ApplyPaperChromePresentation selects the target form's margin. During an animated
+        // form change the current frame still owns geometry, so immediately re-apply the
+        // current transition progress before the first animation tick can be presented.
+        if (animate)
+        {
+            UpdateTransitionVisuals(TransitionProgress);
+        }
         RestoreCollapseStartPositionIfNeeded(shouldRestoreCollapseStartPosition, collapseStartLeft, collapseStartTop);
 
         if (animate)
         {
-            if (!collapsed)
+            if (!collapsed && !_controller.UsesNativeMicaWindows)
             {
                 Width = expandedWidth;
                 Height = expandedHeight;

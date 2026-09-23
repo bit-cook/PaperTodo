@@ -93,6 +93,7 @@ public sealed partial class AppController
             window.UpdateTheme();
         }
         foreach (var m in _masterCapsules.Values) m.UpdateTheme();
+        SkinBorder.RefreshLoadedSurfaces();
 
         RebuildTrayMenu();
         RefreshSettingsWindowContent();
@@ -127,10 +128,23 @@ public sealed partial class AppController
             (ColorSchemes.Warm, Strings.Get("ColorSchemeWarm")),
             (ColorSchemes.Ink, Strings.Get("ColorSchemeInk")),
             (ColorSchemes.Forest, Strings.Get("ColorSchemeForest")),
-            (ColorSchemes.Rose, Strings.Get("ColorSchemeRose"))
+            (ColorSchemes.Rose, Strings.Get("ColorSchemeRose")),
+            (ColorSchemes.Neutral, Strings.Get("ColorSchemeNeutral"))
         };
 
         return CreateSegmentSelector(segments, ColorSchemes.Normalize(State.ColorScheme), SetColorScheme);
+    }
+
+    private void ToggleMicaAlwaysActive() =>
+        SetSettingFromUi("appearance.native_material_always_active", !State.MicaAlwaysActive);
+
+    private void RefreshMicaSettings()
+    {
+        foreach (var window in _windows.Values)
+        {
+            window.RefreshNativeMica();
+        }
+        _settingsMica?.Refresh(Theme.UsesNativeBackdrop, Theme.IsDark, PaperSkins.NativeBackdrop(Theme.Skin), State.MicaAlwaysActive);
     }
 
     private void SetUiFontPreset(string preset) =>
@@ -560,7 +574,7 @@ public sealed partial class AppController
             SizeToContent = SizeToContent.Manual,
             WindowStyle = WindowStyle.None,
             ResizeMode = ResizeMode.NoResize,
-            AllowsTransparency = true,
+            AllowsTransparency = !UsesNativeMicaWindows,
             Background = Brushes.Transparent,
             ShowInTaskbar = false,
             Topmost = false,
@@ -606,9 +620,19 @@ public sealed partial class AppController
             _settingsRegionRefreshers.Clear();
             _pluginStatusRefreshers.Clear();
             DiscardShortcutDraft();
+            _settingsMica?.Dispose();
+            _settingsMica = null;
             _settingsWindow = null;
         };
         _settingsWindow = window;
+        if (UsesNativeMicaWindows)
+        {
+            _settingsMica = new NativeMicaBackdrop(window, () => window.Content as Border,
+                () => true, brush =>
+                {
+                    if (window.Content is Border chrome) chrome.Background = brush;
+                });
+        }
         RefreshSettingsWindowContent();
         window.Show();
         window.Activate();
@@ -1638,6 +1662,7 @@ public sealed partial class AppController
         leftColumn.Children.Add(CreateThemeSegmentSelector());
         leftColumn.Children.Add(WrapWithHint(SettingsFieldLabel(Strings.Get("SettingsColorScheme")), "TipColorScheme"));
         leftColumn.Children.Add(CreateColorSchemeSegmentSelector());
+        leftColumn.Children.Add(CreateSkinSettings());
         leftColumn.Children.Add(WrapWithHint(
             SettingsFieldLabel(Strings.Get("SettingsResizeGripMode")),
             "TipResizeGripMode"));
@@ -1787,6 +1812,12 @@ public sealed partial class AppController
         // Theme lives on the visual page with color scheme / fonts.
         State.Theme = "system";
         State.ColorScheme = ColorSchemes.Warm;
+        State.PaperSkin = PaperSkins.Paper;
+        State.MicaBackdropType = MicaBackdropTypes.Mica;
+        State.MicaAlwaysActive = false;
+        State.MaterialTransparency = MaterialTransparencyLevels.Medium;
+        State.HideSurfaceOutline = false;
+        State.MatchAuxiliaryMaterialStrength = false;
         State.UiFontPreset = UiFontPresets.Default;
         State.TextRenderingProfile = TextRenderingProfiles.Standard;
         State.CustomFontEnhancedBold = false;
@@ -1858,7 +1889,7 @@ public sealed partial class AppController
 
         var signature = new Border
         {
-            Background = TrayPaperBrush,
+            Background = Brushes.Transparent,
             Cursor = System.Windows.Input.Cursors.Hand,
             HorizontalAlignment = HorizontalAlignment.Left,
             Margin = new Thickness(2, 10, 0, 0),
@@ -2482,18 +2513,10 @@ public sealed partial class AppController
             ScheduleDisplayMetricsRefresh();
         }
 
-        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color or
+            UserPreferenceCategory.Accessibility)
         {
-            if (State.Theme == "system")
-            {
-                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (State.Theme == "system")
-                    {
-                        RefreshThemeSurfaces();
-                    }
-                }));
-            }
+            QueueNativeMicaPreferenceRefresh();
         }
     }
 
